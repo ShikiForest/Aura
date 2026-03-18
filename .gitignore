@@ -1,0 +1,17 @@
+# --- .NET 忽略项 ---
+[Bb]in/
+[Oo]bj/
+*.binlog
+*.exe
+*.dll
+*.pdb
+
+# --- VS Code 插件忽略项 ---
+vscode-aura/node_modules/
+vscode-aura/out/
+.vscode/
+
+# --- 其他临时文件 ---
+.claude/
+.DS_Store
+Thumbs.db

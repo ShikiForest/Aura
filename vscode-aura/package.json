@@ -1,0 +1,113 @@
+{
+  "name": "aura-lang",
+  "displayName": "Aura Language",
+  "description": "Full language support for the Aura programming language: syntax highlighting, diagnostics, completion, go-to-definition, snippets, and debugging.",
+  "version": "0.1.0",
+  "publisher": "aura-lang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Snippets"
+  ],
+  "activationEvents": [
+    "onLanguage:aura"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "aura",
+        "aliases": ["Aura", "aura"],
+        "extensions": [".aura"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/aura-light.png",
+          "dark": "./icons/aura-dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "aura",
+        "scopeName": "source.aura",
+        "path": "./syntaxes/aura.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "aura",
+        "path": "./snippets/aura.json"
+      }
+    ],
+    "configuration": {
+      "title": "Aura",
+      "properties": {
+        "aura.compiler.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Aura compiler project directory. If empty, the extension looks for 'aura' on PATH."
+        },
+        "aura.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Aura Language Server for diagnostics, completion, and go-to-definition."
+        },
+        "aura.lsp.trace": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace communication between VS Code and the Aura Language Server."
+        }
+      }
+    },
+    "problemMatchers": [
+      {
+        "name": "aura",
+        "owner": "aura",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.+)\\((\\d+),(\\d+)\\):\\s+(error|warning|info)(?:\\s+\\[(.+)\\])?:\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        }
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "aura",
+        "required": ["task"],
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The Aura task to run: compile, check, or run"
+          },
+          "file": {
+            "type": "string",
+            "description": "The .aura source file"
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

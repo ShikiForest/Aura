@@ -1,0 +1,33 @@
+// Aura sample: hello.aura
+// Covers: top-level functions, class, let/var, ternary, string ops, i32
+
+// ── Class ────────────────────────────────────────────────────────────────────
+pub class Person {
+    pub property name: string
+    pub property age: i32
+
+    pub fn greet() -> string {
+        return "Hello, " + name + "!"
+    }
+
+    pub fn is_adult() -> bool => age >= 18
+}
+
+// ── Top-level helpers ─────────────────────────────────────────────────────────
+fn make_banner(text: string) -> string {
+    return "=== " + text + " ==="
+}
+
+fn add(a: i32, b: i32) -> i32 => a + b
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+pub fn main() {
+    let banner = make_banner("Aura Hello")
+    Console.WriteLine(banner)
+
+    var total = add(3, 4)
+    Console.WriteLine(total)
+
+    let result = total > 5 ? "big" : "small"
+    Console.WriteLine(result)
+}

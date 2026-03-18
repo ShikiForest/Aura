@@ -1,0 +1,122 @@
+{
+  "Function": {
+    "prefix": "fn",
+    "body": ["fn ${1:name}(${2:params}) -> ${3:void} {", "\t$0", "}"],
+    "description": "Function declaration"
+  },
+  "Public Function": {
+    "prefix": "cfn",
+    "body": ["pub fn ${1:name}(${2:params}) -> ${3:void} {", "\t$0", "}"],
+    "description": "Public function declaration"
+  },
+  "Main Function": {
+    "prefix": "main",
+    "body": ["fn main() {", "\t$0", "}"],
+    "description": "Main entry point"
+  },
+  "Async Function": {
+    "prefix": "asyncfn",
+    "body": ["pub async fn ${1:name}(${2:params}) -> ${3:void} {", "\t$0", "}"],
+    "description": "Async function declaration"
+  },
+  "Class": {
+    "prefix": "class",
+    "body": ["pub class ${1:Name} {", "\t$0", "}"],
+    "description": "Class declaration"
+  },
+  "Struct": {
+    "prefix": "struct",
+    "body": ["pub struct ${1:Name} {", "\t$0", "}"],
+    "description": "Struct declaration"
+  },
+  "Trait": {
+    "prefix": "trait",
+    "body": ["pub trait ${1:Name} {", "\t$0", "}"],
+    "description": "Trait declaration"
+  },
+  "Enum": {
+    "prefix": "enum",
+    "body": ["pub enum ${1:Name} {", "\t${2:Variant},", "}"],
+    "description": "Enum declaration"
+  },
+  "Window": {
+    "prefix": "window",
+    "body": ["pub window ${1:Name} {", "\t${2:member}: ${3:type};", "}"],
+    "description": "Window declaration"
+  },
+  "Let Binding": {
+    "prefix": "let",
+    "body": "let ${1:name} = ${0:value};",
+    "description": "Immutable variable"
+  },
+  "Var Binding": {
+    "prefix": "var",
+    "body": "var ${1:name} = ${0:value};",
+    "description": "Mutable variable"
+  },
+  "Let Typed": {
+    "prefix": "lett",
+    "body": "let ${1:name}: ${2:type} = ${0:value};",
+    "description": "Typed immutable variable"
+  },
+  "If": {
+    "prefix": "if",
+    "body": ["if ${1:condition} {", "\t$0", "}"],
+    "description": "If statement"
+  },
+  "If-Else": {
+    "prefix": "ife",
+    "body": ["if ${1:condition} {", "\t$2", "} else {", "\t$0", "}"],
+    "description": "If-else statement"
+  },
+  "For": {
+    "prefix": "for",
+    "body": ["for ${1:item} in ${2:collection} {", "\t$0", "}"],
+    "description": "For-in loop"
+  },
+  "While": {
+    "prefix": "while",
+    "body": ["while ${1:condition} {", "\t$0", "}"],
+    "description": "While loop"
+  },
+  "Switch": {
+    "prefix": "switch",
+    "body": ["switch ${1:value} {", "\tcase ${2:pattern} => ${3:result}", "\tdefault => ${0:result}", "}"],
+    "description": "Switch expression"
+  },
+  "Try-Catch": {
+    "prefix": "try",
+    "body": ["try {", "\t$1", "} catch (${2:Exception} ${3:e}) {", "\t$0", "}"],
+    "description": "Try-catch block"
+  },
+  "Property": {
+    "prefix": "prop",
+    "body": ["pub property ${1:name}: ${2:type} {", "\tget => ${0:value};", "}"],
+    "description": "Property declaration"
+  },
+  "Property GetSet": {
+    "prefix": "propgs",
+    "body": ["pub property ${1:name}: ${2:type} {", "\tget {", "\t\t$3", "\t}", "\tset {", "\t\t$0", "\t}", "}"],
+    "description": "Property with get and set"
+  },
+  "Field": {
+    "prefix": "field",
+    "body": "pub let ${1:name}: ${2:type};",
+    "description": "Field declaration"
+  },
+  "Pipe": {
+    "prefix": "pipe",
+    "body": "${1:data} | ${2:transform} | ${0:output}",
+    "description": "Pipe expression"
+  },
+  "Import": {
+    "prefix": "import",
+    "body": "import ${0:module};",
+    "description": "Import declaration"
+  },
+  "Namespace": {
+    "prefix": "namespace",
+    "body": ["namespace ${1:name} {", "\t$0", "}"],
+    "description": "Namespace declaration"
+  }
+}
