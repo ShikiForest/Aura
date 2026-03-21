@@ -219,8 +219,12 @@ BLOCK_COMMENT
     : '/*' .*? '*/' -> channel(HIDDEN)
     ;
 
+NL
+    : [\r\n]+ -> channel(HIDDEN)
+    ;
+
 WS
-    : [ \t\r\n\u000C]+ -> channel(HIDDEN)
+    : [ \t\u000C]+ -> channel(HIDDEN)
     ;
 
 /* =========================

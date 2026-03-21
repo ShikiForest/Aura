@@ -1250,15 +1250,26 @@ public sealed class SemanticAnalyzer
 
         if (op is "+" or "-" or "*" or "/" or "%")
         {
-            // v1：只支持数值。无法推断则 Unknown
             if (left is TypeRef.Builtin bl && right is TypeRef.Builtin br)
             {
-                // 粗略：浮点优先
+                // string + string → string (concatenation)
+                if (op == "+" && (bl.Kind == BuiltinTypeKind.String || br.Kind == BuiltinTypeKind.String))
+                    return new TypeRef.Builtin(BuiltinTypeKind.String);
+
+                // char + char → string (concatenation)
+                if (op == "+" && bl.Kind == BuiltinTypeKind.Char && br.Kind == BuiltinTypeKind.Char)
+                    return new TypeRef.Builtin(BuiltinTypeKind.String);
+
+                // 浮点优先
                 if (bl.Kind is BuiltinTypeKind.F64 or BuiltinTypeKind.F32 ||
                     br.Kind is BuiltinTypeKind.F64 or BuiltinTypeKind.F32)
                     return new TypeRef.Builtin(BuiltinTypeKind.F64);
 
-                // 其余当 i32
+                // decimal
+                if (bl.Kind == BuiltinTypeKind.Decimal || br.Kind == BuiltinTypeKind.Decimal)
+                    return new TypeRef.Builtin(BuiltinTypeKind.Decimal);
+
+                // 其余整数当 i32
                 return new TypeRef.Builtin(BuiltinTypeKind.I32);
             }
             return TypeRef.Unknown;

@@ -15,7 +15,7 @@ compilationUnit
     ;
 
 importDecl
-    : IMPORT qualifiedName SEMI?
+    : IMPORT qualifiedName SEMI
     ;
 
 namespaceDecl
@@ -65,11 +65,11 @@ traitDecl
     ;
 
 traitBody
-    : LBRACE traitMember* RBRACE
+    : LBRACE (traitMember | SEMI)* RBRACE
     ;
 
 traitMember
-    : attributeSection* functionSignature SEMI?
+    : attributeSection* functionSignature SEMI
     ;
 
 classDecl
@@ -85,7 +85,7 @@ structDecl
     ;
 
 classBody
-    : LBRACE classMember* RBRACE
+    : LBRACE (classMember | SEMI)* RBRACE
     ;
 
 classMember
@@ -103,23 +103,23 @@ fieldDecl
       identifier
       (COLON type)?
       (ASSIGN expression)?
-      SEMI?
+      SEMI
     ;
 
 propertyDecl
     : attributeSection* visibilityModifier?
       PROPERTY identifier COLON type
       propertyAccessorBlock?
-      SEMI?
+      SEMI
     ;
 
 propertyAccessorBlock
-    : LBRACE accessorDecl* RBRACE
+    : LBRACE (accessorDecl | SEMI)* RBRACE
     ;
 
 accessorDecl
-    : GET (FATARROW expression SEMI? | block)?
-    | SET (FATARROW expression SEMI? | block)?
+    : GET (FATARROW expression SEMI | block)?
+    | SET (FATARROW expression SEMI | block)?
     ;
 
 enumDecl
@@ -140,11 +140,11 @@ windowDecl
     ;
 
 windowBody
-    : LBRACE windowMemberDecl* RBRACE
+    : LBRACE (windowMemberDecl | SEMI)* RBRACE
     ;
 
 windowMemberDecl
-    : identifier COLON type SEMI?
+    : identifier COLON type SEMI
     ;
 
 /* ---------- Functions ---------- */
@@ -180,7 +180,7 @@ functionReturnOrState
 
 functionBody
     : block
-    | FATARROW expression SEMI?
+    | FATARROW expression SEMI
     ;
 
 operatorDecl
@@ -259,7 +259,7 @@ statement
     ;
 
 variableDecl
-    : (LET | VAR) identifier (COLON type)? (ASSIGN expression)? SEMI?
+    : (LET | VAR) identifier (COLON type)? (ASSIGN expression)? SEMI
     ;
 
 ifStatement
@@ -292,7 +292,7 @@ switchLabel
     ;
 
 usingStatement
-    : AWAIT? USING usingResource (block | SEMI?)
+    : AWAIT? USING usingResource (block | SEMI)
     ;
 
 usingResource
@@ -310,19 +310,19 @@ usingLocalDecl
     ;
 
 returnStatement
-    : RETURN expression? SEMI?
+    : RETURN expression? SEMI
     ;
 
 breakStatement
-    : BREAK SEMI?
+    : BREAK SEMI
     ;
 
 continueStatement
-    : CONTINUE SEMI?
+    : CONTINUE SEMI
     ;
 
 throwStatement
-    : THROW expression? SEMI?
+    : THROW expression? SEMI
     ;
 
 tryStatement
@@ -338,11 +338,11 @@ finallyClause
     ;
 
 opDeclStatement
-    : OP identifier COLON functionType SEMI?
+    : OP identifier COLON functionType SEMI
     ;
 
 expressionStatement
-    : expression SEMI?
+    : expression SEMI
     ;
 
 /* =========================
