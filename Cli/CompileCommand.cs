@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using AuraLang.Ast;
 using AuraLang.CodeGen;
+using AuraLang.I18n;
 using AuraLang.Lowering;
 using AuraLang.Semantics;
 
@@ -41,7 +42,7 @@ internal static class CompileCommand
         // ── Load source ───────────────────────────────────────────────────────
         if (!File.Exists(opts.SourceFile))
         {
-            ConsoleWriter.Error($"File not found: {opts.SourceFile}");
+            ConsoleWriter.Error(Msg.Cli("file_not_found", opts.SourceFile));
             return Fail(1, 0, totalSw);
         }
 
@@ -54,12 +55,12 @@ internal static class CompileCommand
                               Path.GetDirectoryName(Path.GetFullPath(opts.SourceFile))!,
                               name + ".dll");
 
-        Console.WriteLine($"  source : {opts.SourceFile}");
-        Console.WriteLine($"  output : {outputPath}");
-        ConsoleWriter.Verbose(opts.Verbose, $"assembly name : {name}");
+        Console.WriteLine($"  {Msg.Cli("label_source")} : {opts.SourceFile}");
+        Console.WriteLine($"  {Msg.Cli("label_output")} : {outputPath}");
+        ConsoleWriter.Verbose(opts.Verbose, $"{Msg.Cli("label_assembly")} : {name}");
 
         // ── Step 1: Parse ─────────────────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(1, "Parsing");
+        ConsoleWriter.PhaseHeader(1, Msg.Cli("phase_parsing"));
         var sw = Stopwatch.StartNew();
         var parseResult = AuraFrontEnd.ParseCompilationUnit(source);
         sw.Stop();
@@ -73,15 +74,15 @@ internal static class CompileCommand
 
         if (errors > 0 || parseResult.Ast is null)
         {
-            ConsoleWriter.PhaseFail("Parse failed", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("parse_failed"), sw.Elapsed);
             return Fail(errors, warnings, totalSw);
         }
 
-        ConsoleWriter.PhaseOk("AST built", sw.Elapsed);
+        ConsoleWriter.PhaseOk(Msg.Cli("ast_built"), sw.Elapsed);
         var ast = parseResult.Ast;
 
         // ── Step 2: Semantic analysis ─────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(2, "Semantic analysis");
+        ConsoleWriter.PhaseHeader(2, Msg.Cli("phase_semantic"));
         sw = Stopwatch.StartNew();
         var semResult = SemanticFrontEnd.Check(ast);
         sw.Stop();
@@ -98,11 +99,11 @@ internal static class CompileCommand
 
         if (semErrors > 0)
         {
-            ConsoleWriter.PhaseFail("Semantic analysis failed", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("semantic_failed"), sw.Elapsed);
             return Fail(errors, warnings, totalSw);
         }
 
-        ConsoleWriter.PhaseOk($"{semResult.Diagnostics.Count} diagnostic(s)", sw.Elapsed);
+        ConsoleWriter.PhaseOk(Msg.Cli("n_diagnostics", semResult.Diagnostics.Count), sw.Elapsed);
 
         // ── Step 3: Lowering ──────────────────────────────────────────────────
         CompilationUnitNode loweredAst;
@@ -110,12 +111,12 @@ internal static class CompileCommand
         if (opts.NoLower)
         {
             Console.WriteLine();
-            ConsoleWriter.Verbose(true, "[3] Lowering skipped (--no-lower)");
+            ConsoleWriter.Verbose(true, "[3] " + Msg.Cli("lowering_skipped"));
             loweredAst = ast;
         }
         else
         {
-            ConsoleWriter.PhaseHeader(3, "Lowering");
+            ConsoleWriter.PhaseHeader(3, Msg.Cli("phase_lowering"));
             sw = Stopwatch.StartNew();
             var lowerer      = new AuraLowerer();
             var lowerResult  = lowerer.Lower(ast);
@@ -133,16 +134,16 @@ internal static class CompileCommand
 
             if (lowerErrors > 0)
             {
-                ConsoleWriter.PhaseFail("Lowering failed", sw.Elapsed);
+                ConsoleWriter.PhaseFail(Msg.Cli("lowering_failed"), sw.Elapsed);
                 return Fail(errors, warnings, totalSw);
             }
 
             loweredAst = lowerResult.Ast;
-            ConsoleWriter.PhaseOk($"{lowerResult.Diagnostics.Count} diagnostic(s)", sw.Elapsed);
+            ConsoleWriter.PhaseOk(Msg.Cli("n_diagnostics", lowerResult.Diagnostics.Count), sw.Elapsed);
         }
 
         // ── Step 4: Code generation ───────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(4, "Code generation");
+        ConsoleWriter.PhaseHeader(4, Msg.Cli("phase_codegen"));
         sw = Stopwatch.StartNew();
 
         Directory.CreateDirectory(
@@ -165,7 +166,7 @@ internal static class CompileCommand
 
         if (codegenErrors > 0 || !File.Exists(outputPath))
         {
-            ConsoleWriter.PhaseFail("Code generation failed", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("codegen_failed"), sw.Elapsed);
             return Fail(errors, warnings, totalSw);
         }
 
@@ -175,14 +176,14 @@ internal static class CompileCommand
         {
             var pdbSize = new FileInfo(pdbPath).Length;
             ConsoleWriter.PhaseOk(
-                $"DLL written: {outputPath}  ({dllSize:N0} bytes)", sw.Elapsed);
+                Msg.Cli("dll_written", outputPath, $"{dllSize:N0}"), sw.Elapsed);
             ConsoleWriter.Verbose(true,
-                $"PDB written: {pdbPath}  ({pdbSize:N0} bytes)");
+                Msg.Cli("pdb_written", pdbPath, $"{pdbSize:N0}"));
         }
         else
         {
             ConsoleWriter.PhaseOk(
-                $"DLL written: {outputPath}  ({dllSize:N0} bytes)", sw.Elapsed);
+                Msg.Cli("dll_written", outputPath, $"{dllSize:N0}"), sw.Elapsed);
         }
 
         totalSw.Stop();

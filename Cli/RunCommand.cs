@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using AuraLang.CodeGen.Tools;
+using AuraLang.I18n;
 
 namespace AntlrCompiler.Cli;
 
@@ -16,7 +17,8 @@ internal static class RunCommand
             opts.OutputPath,
             opts.AssemblyName,
             opts.Verbose,
-            opts.NoLower);
+            opts.NoLower,
+            opts.Lang);
 
         var compileResult = CompileCommand.ExecuteCore(compileOpts);
 
@@ -40,7 +42,7 @@ internal static class RunCommand
             SelfContained:   opts.SelfContained);
 
         // ── 5: Create host project ────────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(5, "EXE packaging");
+        ConsoleWriter.PhaseHeader(5, Msg.Cli("phase_packaging"));
         var sw = Stopwatch.StartNew();
 
         string hostDir;
@@ -51,7 +53,7 @@ internal static class RunCommand
         }
         catch (Exception ex)
         {
-            ConsoleWriter.PhaseFail($"Failed to create host project: {ex.Message}", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("host_project_failed", ex.Message), sw.Elapsed);
             ConsoleWriter.Summary(
                 compileResult.TotalErrors + 1,
                 compileResult.TotalWarnings,
@@ -59,17 +61,17 @@ internal static class RunCommand
             return 1;
         }
 
-        ConsoleWriter.Verbose(opts.Verbose, $"Host project: {hostDir}");
+        ConsoleWriter.Verbose(opts.Verbose, Msg.Cli("label_host_project", hostDir));
 
         // ── 6: dotnet publish ─────────────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(6, "Publishing");
+        ConsoleWriter.PhaseHeader(6, Msg.Cli("phase_publishing"));
         var pubOut   = Path.Combine(outDir, hostName, "publish");
         int pubExit  = AuraExePackager.PublishHostProject(hostDir, pubOut, packagerOpts);
         sw.Stop();
 
         if (pubExit != 0)
         {
-            ConsoleWriter.PhaseFail($"dotnet publish exited with code {pubExit}", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("publish_failed", pubExit), sw.Elapsed);
             ConsoleWriter.Summary(
                 compileResult.TotalErrors + 1,
                 compileResult.TotalWarnings,
@@ -93,11 +95,11 @@ internal static class RunCommand
         // ── 7: Execute ────────────────────────────────────────────────────────
         if (!File.Exists(exePath))
         {
-            ConsoleWriter.Error($"EXE not found after publish: {exePath}");
+            ConsoleWriter.Error(Msg.Cli("exe_not_found", exePath));
             return 1;
         }
 
-        Console.WriteLine($"\n  Running: {Path.GetFileName(exePath)}");
+        Console.WriteLine($"\n  {Msg.Cli("running", Path.GetFileName(exePath))}");
         Console.WriteLine(new string('─', 60));
 
         // Pass stdio directly to the terminal — do NOT redirect.
@@ -112,7 +114,7 @@ internal static class RunCommand
         proc.WaitForExit();
 
         Console.WriteLine(new string('─', 60));
-        ConsoleWriter.Verbose(opts.Verbose, $"Process exited with code {proc.ExitCode}");
+        ConsoleWriter.Verbose(opts.Verbose, Msg.Cli("process_exited", proc.ExitCode));
 
         return proc.ExitCode;
     }

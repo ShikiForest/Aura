@@ -1,3 +1,5 @@
+using AuraLang.I18n;
+
 namespace AntlrCompiler.Cli;
 
 /// <summary>
@@ -159,12 +161,12 @@ internal static class ConsoleWriter
         else
             SetColor(ConsoleColor.Green);
 
-        var errPart  = $"{errors} error(s)";
-        var warnPart = $"{warnings} warning(s)";
+        var errPart  = Msg.Cli("summary_errors", errors);
+        var warnPart = Msg.Cli("summary_warnings", warnings);
         Console.Write($"  {errPart}, {warnPart}");
 
         SetColor(ConsoleColor.DarkGray);
-        Console.WriteLine($"  —  {total.TotalMilliseconds:F0} ms total");
+        Console.WriteLine($"  —  {Msg.Cli("summary_total_ms", $"{total.TotalMilliseconds:F0}")}");
         Reset();
     }
 

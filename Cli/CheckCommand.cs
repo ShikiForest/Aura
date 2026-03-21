@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AuraLang.I18n;
 using AuraLang.Semantics;
 
 namespace AntlrCompiler.Cli;
@@ -17,17 +18,17 @@ internal static class CheckCommand
         // ── Load source ───────────────────────────────────────────────────────
         if (!File.Exists(opts.SourceFile))
         {
-            ConsoleWriter.Error($"File not found: {opts.SourceFile}");
+            ConsoleWriter.Error(Msg.Cli("file_not_found", opts.SourceFile));
             return 1;
         }
 
         var source      = File.ReadAllText(opts.SourceFile);
         var sourceLines = source.Split('\n');
 
-        Console.WriteLine($"  source : {opts.SourceFile}");
+        Console.WriteLine($"  {Msg.Cli("label_source")} : {opts.SourceFile}");
 
         // ── Step 1: Parse ─────────────────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(1, "Parsing");
+        ConsoleWriter.PhaseHeader(1, Msg.Cli("phase_parsing"));
         var sw = Stopwatch.StartNew();
         var parseResult = AuraFrontEnd.ParseCompilationUnit(source);
         sw.Stop();
@@ -41,16 +42,16 @@ internal static class CheckCommand
 
         if (errors > 0 || parseResult.Ast is null)
         {
-            ConsoleWriter.PhaseFail("Parse failed", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("parse_failed"), sw.Elapsed);
             totalSw.Stop();
             ConsoleWriter.Summary(errors, warnings, totalSw.Elapsed);
             return 1;
         }
 
-        ConsoleWriter.PhaseOk("AST built", sw.Elapsed);
+        ConsoleWriter.PhaseOk(Msg.Cli("ast_built"), sw.Elapsed);
 
         // ── Step 2: Semantic analysis ─────────────────────────────────────────
-        ConsoleWriter.PhaseHeader(2, "Semantic analysis");
+        ConsoleWriter.PhaseHeader(2, Msg.Cli("phase_semantic"));
         sw = Stopwatch.StartNew();
         var semResult = SemanticFrontEnd.Check(parseResult.Ast);
         sw.Stop();
@@ -66,9 +67,9 @@ internal static class CheckCommand
         errors += semErrors;
 
         if (semErrors > 0)
-            ConsoleWriter.PhaseFail("Semantic analysis found errors", sw.Elapsed);
+            ConsoleWriter.PhaseFail(Msg.Cli("semantic_found_errors"), sw.Elapsed);
         else
-            ConsoleWriter.PhaseOk($"{semResult.Diagnostics.Count} diagnostic(s)", sw.Elapsed);
+            ConsoleWriter.PhaseOk(Msg.Cli("n_diagnostics", semResult.Diagnostics.Count), sw.Elapsed);
 
         totalSw.Stop();
         ConsoleWriter.Summary(errors, warnings, totalSw.Elapsed);

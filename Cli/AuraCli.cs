@@ -1,4 +1,5 @@
 using System.Reflection;
+using AuraLang.I18n;
 
 namespace AntlrCompiler.Cli;
 
@@ -44,6 +45,7 @@ internal static class AuraCli
             ConsoleWriter.Error(err!);
             return 1;
         }
+        InitLocale(opts!.Lang);
         return CompileCommand.Execute(opts!);
     }
 
@@ -55,6 +57,7 @@ internal static class AuraCli
             ConsoleWriter.Error(err!);
             return 1;
         }
+        InitLocale(opts!.Lang);
         return RunCommand.Execute(opts!);
     }
 
@@ -66,6 +69,7 @@ internal static class AuraCli
             ConsoleWriter.Error(err!);
             return 1;
         }
+        InitLocale(opts!.Lang);
         return CheckCommand.Execute(opts!);
     }
 
@@ -83,8 +87,15 @@ internal static class AuraCli
 
     private static int UnknownSubcommand(string name)
     {
-        ConsoleWriter.Error($"Unknown subcommand '{name}'. Run 'aura --help' for usage.");
+        ConsoleWriter.Error(Msg.Cli("unknown_subcommand", name));
         return 1;
+    }
+
+    // ── Locale initialization ───────────────────────────────────────────────
+
+    private static void InitLocale(string? lang)
+    {
+        LocaleContext.Current = LocaleContext.Detect(lang);
     }
 
     // ── Argument parsers ─────────────────────────────────────────────────────
@@ -98,6 +109,7 @@ internal static class AuraCli
         string? sourceFile = null;
         string? outputPath = null;
         string? name       = null;
+        string? lang       = null;
         bool verbose       = false;
         bool noLower       = false;
 
@@ -106,13 +118,18 @@ internal static class AuraCli
             switch (args[i])
             {
                 case "-o" or "--out":
-                    if (++i >= args.Length) { error = "--out requires a path argument."; return false; }
+                    if (++i >= args.Length) { error = Msg.Cli("out_requires_path"); return false; }
                     outputPath = args[i];
                     break;
 
                 case "--name":
-                    if (++i >= args.Length) { error = "--name requires a name argument."; return false; }
+                    if (++i >= args.Length) { error = Msg.Cli("name_requires_arg"); return false; }
                     name = args[i];
+                    break;
+
+                case "--lang":
+                    if (++i >= args.Length) { error = "--lang requires a language argument."; return false; }
+                    lang = args[i];
                     break;
 
                 case "-v" or "--verbose":
@@ -126,12 +143,12 @@ internal static class AuraCli
                 default:
                     if (args[i].StartsWith('-'))
                     {
-                        error = $"Unknown option '{args[i]}'. Run 'aura compile --help' for usage.";
+                        error = Msg.Cli("unknown_option", args[i], "compile");
                         return false;
                     }
                     if (sourceFile is not null)
                     {
-                        error = $"Unexpected argument '{args[i]}'. Only one source file is allowed.";
+                        error = Msg.Cli("unexpected_arg", args[i]);
                         return false;
                     }
                     sourceFile = args[i];
@@ -139,9 +156,9 @@ internal static class AuraCli
             }
         }
 
-        if (sourceFile is null) { error = "No source file specified."; return false; }
+        if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new CompileOptions(sourceFile, outputPath, name, verbose, noLower);
+        result = new CompileOptions(sourceFile, outputPath, name, verbose, noLower, lang);
         error  = null;
         return true;
     }
@@ -155,6 +172,7 @@ internal static class AuraCli
         string? sourceFile = null;
         string? outputPath = null;
         string? name       = null;
+        string? lang       = null;
         bool verbose       = false;
         bool noLower       = false;
         string tfm         = "net10.0";
@@ -165,13 +183,18 @@ internal static class AuraCli
             switch (args[i])
             {
                 case "-o" or "--out":
-                    if (++i >= args.Length) { error = "--out requires a path argument."; return false; }
+                    if (++i >= args.Length) { error = Msg.Cli("out_requires_path"); return false; }
                     outputPath = args[i];
                     break;
 
                 case "--name":
-                    if (++i >= args.Length) { error = "--name requires a name argument."; return false; }
+                    if (++i >= args.Length) { error = Msg.Cli("name_requires_arg"); return false; }
                     name = args[i];
+                    break;
+
+                case "--lang":
+                    if (++i >= args.Length) { error = "--lang requires a language argument."; return false; }
+                    lang = args[i];
                     break;
 
                 case "-v" or "--verbose":
@@ -183,7 +206,7 @@ internal static class AuraCli
                     break;
 
                 case "--target":
-                    if (++i >= args.Length) { error = "--target requires a TFM argument."; return false; }
+                    if (++i >= args.Length) { error = Msg.Cli("target_requires_tfm"); return false; }
                     tfm = args[i];
                     break;
 
@@ -194,12 +217,12 @@ internal static class AuraCli
                 default:
                     if (args[i].StartsWith('-'))
                     {
-                        error = $"Unknown option '{args[i]}'. Run 'aura run --help' for usage.";
+                        error = Msg.Cli("unknown_option", args[i], "run");
                         return false;
                     }
                     if (sourceFile is not null)
                     {
-                        error = $"Unexpected argument '{args[i]}'. Only one source file is allowed.";
+                        error = Msg.Cli("unexpected_arg", args[i]);
                         return false;
                     }
                     sourceFile = args[i];
@@ -207,9 +230,9 @@ internal static class AuraCli
             }
         }
 
-        if (sourceFile is null) { error = "No source file specified."; return false; }
+        if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new RunOptions(sourceFile, outputPath, name, verbose, noLower, tfm, selfContained);
+        result = new RunOptions(sourceFile, outputPath, name, verbose, noLower, lang, tfm, selfContained);
         error  = null;
         return true;
     }
@@ -221,6 +244,7 @@ internal static class AuraCli
     {
         result = null;
         string? sourceFile = null;
+        string? lang       = null;
         bool verbose       = false;
 
         for (int i = 0; i < args.Length; i++)
@@ -231,15 +255,20 @@ internal static class AuraCli
                     verbose = true;
                     break;
 
+                case "--lang":
+                    if (++i >= args.Length) { error = "--lang requires a language argument."; return false; }
+                    lang = args[i];
+                    break;
+
                 default:
                     if (args[i].StartsWith('-'))
                     {
-                        error = $"Unknown option '{args[i]}'. Run 'aura check --help' for usage.";
+                        error = Msg.Cli("unknown_option", args[i], "check");
                         return false;
                     }
                     if (sourceFile is not null)
                     {
-                        error = $"Unexpected argument '{args[i]}'. Only one source file is allowed.";
+                        error = Msg.Cli("unexpected_arg", args[i]);
                         return false;
                     }
                     sourceFile = args[i];
@@ -247,9 +276,9 @@ internal static class AuraCli
             }
         }
 
-        if (sourceFile is null) { error = "No source file specified."; return false; }
+        if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new CheckOptions(sourceFile, verbose);
+        result = new CheckOptions(sourceFile, verbose, lang);
         error  = null;
         return true;
     }

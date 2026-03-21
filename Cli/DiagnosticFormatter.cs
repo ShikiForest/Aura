@@ -1,7 +1,8 @@
 using AuraLang.Ast;
-using AuraLang.Semantics;
-using AuraLang.Lowering;
 using AuraLang.CodeGen;
+using AuraLang.I18n;
+using AuraLang.Lowering;
+using AuraLang.Semantics;
 
 namespace AntlrCompiler.Cli;
 
@@ -54,9 +55,9 @@ internal static class DiagnosticFormatter
         var loc    = $"{sourceFile}({line},{col})";
         var level  = d.Level switch
         {
-            DiagLevel.Error   => "error",
-            DiagLevel.Warning => "warning",
-            _                 => "info",
+            DiagLevel.Error   => Msg.Cli("severity_error"),
+            DiagLevel.Warning => Msg.Cli("severity_warning"),
+            _                 => Msg.Cli("severity_info"),
         };
         var code = d.Code is not null ? $" [{d.Code}]" : "";
         return $"{loc}: {level}{code}: {d.Message}";

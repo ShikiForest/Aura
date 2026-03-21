@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AuraLang.Ast;
+using AuraLang.I18n;
 
 namespace AuraLang.Semantics;
 
@@ -143,7 +144,7 @@ public sealed class SemanticAnalyzer
 
         if (_index.Types.ContainsKey(full))
         {
-            Emit("AUR1010", DiagnosticSeverity.Error, td.Span, $"重复声明：{full}");
+            Emit("AUR1010", DiagnosticSeverity.Error, td.Span, Msg.Diag("AUR1010", full));
             return;
         }
 
@@ -175,7 +176,7 @@ public sealed class SemanticAnalyzer
         var full = TypeResolver.Combine(ns, ed.Name.Text);
         if (_index.Types.ContainsKey(full))
         {
-            Emit("AUR1010", DiagnosticSeverity.Error, ed.Span, $"重复声明：{full}");
+            Emit("AUR1010", DiagnosticSeverity.Error, ed.Span, Msg.Diag("AUR1010", full));
             return;
         }
 
@@ -194,7 +195,7 @@ public sealed class SemanticAnalyzer
         var full = TypeResolver.Combine(ns, wd.Name.Text);
         if (_index.Types.ContainsKey(full))
         {
-            Emit("AUR1010", DiagnosticSeverity.Error, wd.Span, $"重复声明：{full}");
+            Emit("AUR1010", DiagnosticSeverity.Error, wd.Span, Msg.Diag("AUR1010", full));
             return;
         }
 
@@ -214,7 +215,7 @@ public sealed class SemanticAnalyzer
 
         if (_index.Types.ContainsKey(full))
         {
-            Emit("AUR1010", DiagnosticSeverity.Error, td.Span, $"重复声明：{full}");
+            Emit("AUR1010", DiagnosticSeverity.Error, td.Span, Msg.Diag("AUR1010", full));
             return;
         }
 
@@ -236,14 +237,14 @@ public sealed class SemanticAnalyzer
                 case FieldDeclNode f:
                     // field name duplicates
                     if (sym.Fields.ContainsKey(f.Name.Text))
-                        Emit("AUR1011", DiagnosticSeverity.Error, f.Span, $"重复成员：{td.Name.Text}.{f.Name.Text}");
+                        Emit("AUR1011", DiagnosticSeverity.Error, f.Span, Msg.Diag("AUR1011", td.Name.Text, f.Name.Text));
                     else
                         sym.Fields[f.Name.Text] = f;
                     break;
 
                 case PropertyDeclNode p:
                     if (sym.Properties.ContainsKey(p.Name.Text))
-                        Emit("AUR1011", DiagnosticSeverity.Error, p.Span, $"重复成员：{td.Name.Text}.{p.Name.Text}");
+                        Emit("AUR1011", DiagnosticSeverity.Error, p.Span, Msg.Diag("AUR1011", td.Name.Text, p.Name.Text));
                     else
                         sym.Properties[p.Name.Text] = p;
                     break;
@@ -259,11 +260,11 @@ public sealed class SemanticAnalyzer
 
                 case EnumDeclNode nestedEnum:
                     // v1：不支持 nested types 的语义解析（可扩展）
-                    Emit("AUR1012", DiagnosticSeverity.Warning, nestedEnum.Span, "v1 语义检查器未处理嵌套 enum 声明（可忽略）");
+                    Emit("AUR1012", DiagnosticSeverity.Warning, nestedEnum.Span, Msg.Diag("AUR1012", "enum"));
                     break;
 
                 case WindowDeclNode nestedWindow:
-                    Emit("AUR1012", DiagnosticSeverity.Warning, nestedWindow.Span, "v1 语义检查器未处理嵌套 window 声明（可忽略）");
+                    Emit("AUR1012", DiagnosticSeverity.Warning, nestedWindow.Span, Msg.Diag("AUR1012", "window"));
                     break;
 
                 default:
@@ -286,7 +287,7 @@ public sealed class SemanticAnalyzer
         foreach (var f in sym.Fields.Values)
         {
             if (f.Visibility == Visibility.Public)
-                Emit("AUR4001", DiagnosticSeverity.Error, f.Span, $"禁止公开字段：{sym.FullName}.{f.Name.Text}（请改用 pub property）");
+                Emit("AUR4001", DiagnosticSeverity.Error, f.Span, Msg.Diag("AUR4001", sym.FullName, f.Name.Text));
         }
 
         // AUR4002/4003：pub property 类型白名单
@@ -296,7 +297,7 @@ public sealed class SemanticAnalyzer
             {
                 var t = _typeResolver!.Resolve(p.Type, ctx);
                 if (!IsAllowedPublicPropertyType(t))
-                    Emit("AUR4002", DiagnosticSeverity.Error, p.Span, $"pub property 类型不符合白名单：{sym.FullName}.{p.Name.Text} : {t}");
+                    Emit("AUR4002", DiagnosticSeverity.Error, p.Span, Msg.Diag("AUR4002", sym.FullName, p.Name.Text, t));
             }
         }
 
@@ -307,7 +308,7 @@ public sealed class SemanticAnalyzer
             {
                 var tr = _typeResolver!.Resolve(bt, ctx);
                 if (tr is TypeRef.Named n && n.ResolvedKind == TypeKind.Class)
-                    Emit("AUR4020", DiagnosticSeverity.Error, sd.Span, $"struct 不能继承 class：{n.FullName}");
+                    Emit("AUR4020", DiagnosticSeverity.Error, sd.Span, Msg.Diag("AUR4020", n.FullName));
             }
         }
 
@@ -409,7 +410,7 @@ public sealed class SemanticAnalyzer
                 if (!ok)
                 {
                     Emit("AUR4010", DiagnosticSeverity.Error, implDecl.Span,
-                        $"未实现 trait 成员：{traitFullName}.{sig.Name.Text}（需要签名 {required}）");
+                        Msg.Diag("AUR4010", traitFullName, sig.Name.Text, required));
                 }
             }
         }
@@ -452,13 +453,13 @@ public sealed class SemanticAnalyzer
 
         if (targetType is not TypeRef.Named n || n.ResolvedKind is not (TypeKind.Class or TypeKind.Struct))
         {
-            Emit("AUR4100", DiagnosticSeverity.Error, wd.Span, $"window 目标类型必须是 class/struct：实际为 {targetType}");
+            Emit("AUR4100", DiagnosticSeverity.Error, wd.Span, Msg.Diag("AUR4100.target_type", targetType));
             return;
         }
 
         if (!_index.TryGetType(n.FullName, out var targetSym))
         {
-            Emit("AUR4100", DiagnosticSeverity.Error, wd.Span, $"无法解析 window 目标类型：{n.FullName}");
+            Emit("AUR4100", DiagnosticSeverity.Error, wd.Span, Msg.Diag("AUR4100.resolve", n.FullName));
             return;
         }
 
@@ -469,7 +470,7 @@ public sealed class SemanticAnalyzer
             if (!targetSym.Properties.TryGetValue(m.Name.Text, out var prop) || prop.Visibility != Visibility.Public)
             {
                 Emit("AUR4100", DiagnosticSeverity.Error, m.Span,
-                    $"window 成员 {m.Name.Text} 不存在于目标类型 {n.FullName} 的 pub property 中");
+                    Msg.Diag("AUR4100.member", m.Name.Text, n.FullName));
                 continue;
             }
 
@@ -478,7 +479,7 @@ public sealed class SemanticAnalyzer
             if (!TypeEquals(t1, t2))
             {
                 Emit("AUR4101", DiagnosticSeverity.Error, m.Span,
-                    $"window 成员类型不匹配：目标 {n.FullName}.{m.Name.Text} 为 {t1}，window 声明为 {t2}");
+                    Msg.Diag("AUR4101", n.FullName, m.Name.Text, t1, t2));
             }
         }
     }
@@ -515,13 +516,13 @@ public sealed class SemanticAnalyzer
                 var sig = string.Join(",", fn.Parameters.Select(p => p.Type != null ? _typeResolver!.Resolve(p.Type, ctx).ToString() : "var"));
                 paramSig ??= sig;
                 if (sig != paramSig)
-                    Emit("AUR2230", DiagnosticSeverity.Error, fn.Span, $"状态函数组 {g.Key} 参数列表必须一致");
+                    Emit("AUR2230", DiagnosticSeverity.Error, fn.Span, Msg.Diag("AUR2230", g.Key));
 
                 var state = (StateSpecNode)fn.ReturnSpec!;
                 var parts = state.StateName.Parts;
                 if (parts.Count < 2)
                 {
-                    Emit("AUR2231", DiagnosticSeverity.Error, fn.Span, $"状态函数返回必须形如 Enum.Value：实际 {state.StateName}");
+                    Emit("AUR2231", DiagnosticSeverity.Error, fn.Span, Msg.Diag("AUR2231.format", state.StateName));
                     continue;
                 }
 
@@ -530,10 +531,10 @@ public sealed class SemanticAnalyzer
 
                 stateEnumTypeName ??= enumType;
                 if (enumType != stateEnumTypeName)
-                    Emit("AUR2231", DiagnosticSeverity.Error, fn.Span, $"状态函数组 {g.Key} 必须使用同一状态枚举类型");
+                    Emit("AUR2231", DiagnosticSeverity.Error, fn.Span, Msg.Diag("AUR2231.enum", g.Key));
 
                 if (!seenStates.Add(enumValue))
-                    Emit("AUR2232", DiagnosticSeverity.Error, fn.Span, $"状态 {enumType}.{enumValue} 的实现重复：{g.Key}");
+                    Emit("AUR2232", DiagnosticSeverity.Error, fn.Span, Msg.Diag("AUR2232", enumType, enumValue, g.Key));
             }
 
             // 覆盖性（推荐：Warning）
@@ -546,7 +547,7 @@ public sealed class SemanticAnalyzer
                     var all = enumSym.EnumDecl.Members.Select(m => m.Name.Text).ToHashSet(StringComparer.Ordinal);
                     var missing = all.Except(seenStates).ToList();
                     if (missing.Count > 0)
-                        Emit("AUR2233", DiagnosticSeverity.Warning, td.Span, $"状态函数组 {g.Key} 未覆盖所有状态：缺少 {string.Join(", ", missing)}");
+                        Emit("AUR2233", DiagnosticSeverity.Warning, td.Span, Msg.Diag("AUR2233", g.Key, string.Join(", ", missing)));
                 }
             }
         }
@@ -572,7 +573,7 @@ public sealed class SemanticAnalyzer
             if (m is FunctionDeclNode fn && fn.Name.Text == "new")
             {
                 Emit("AUR4050", DiagnosticSeverity.Error, fn.Span,
-                    $"User-defined constructors are not allowed in Aura. Remove 'fn new(...)' from '{sym.Decl.Name.Text}'. Use [BuildMe] with a builder class instead.");
+                    Msg.Diag("AUR4050", sym.Decl.Name.Text));
             }
         }
     }
@@ -601,13 +602,13 @@ public sealed class SemanticAnalyzer
                 if (fn.Parameters.Count != 1)
                 {
                     Emit("AUR4200", DiagnosticSeverity.Error, fn.Span,
-                        $"self decode function must have exactly one parameter (permission enum type), found {fn.Parameters.Count}.");
+                        Msg.Diag("AUR4200", fn.Parameters.Count));
                 }
 
                 if (fn.ReturnSpec is ReturnTypeSpecNode rts && rts.ReturnType is not WindowOfTypeNode)
                 {
                     Emit("AUR4201", DiagnosticSeverity.Error, fn.Span,
-                        $"self decode function must return windowof<{sym.Decl.Name.Text}>, not {rts.ReturnType}.");
+                        Msg.Diag("AUR4201", sym.Decl.Name.Text, rts.ReturnType));
                 }
             }
         }
@@ -691,12 +692,12 @@ public sealed class SemanticAnalyzer
         foreach (var p in fn.Parameters)
         {
             if (p.Name.Text == "item")
-                Emit("AUR4300", DiagnosticSeverity.Error, p.Span, "禁止把 item 用作参数名（item 仅用于谓词索引器）");
+                Emit("AUR4300", DiagnosticSeverity.Error, p.Span, Msg.Diag("AUR4300.param"));
 
             var t = p.Type != null ? _typeResolver!.Resolve(p.Type, ctx) : TypeRef.Unknown;
             var sym = new LocalSymbol(p.Name.Text, Mutability.Let, t, p.Span);
             if (!_scope.TryDeclare(sym))
-                Emit("AUR1020", DiagnosticSeverity.Error, p.Span, $"重复定义参数：{p.Name.Text}");
+                Emit("AUR1020", DiagnosticSeverity.Error, p.Span, Msg.Diag("AUR1020.param", p.Name.Text));
         }
 
         // body
@@ -750,7 +751,7 @@ public sealed class SemanticAnalyzer
 
             case ForEachStmtNode fe:
                 if (fe.ItemName.Text == "item")
-                    Emit("AUR4300", DiagnosticSeverity.Error, fe.ItemName.Span, "禁止把 item 用作循环变量名（item 仅用于谓词索引器）");
+                    Emit("AUR4300", DiagnosticSeverity.Error, fe.ItemName.Span, Msg.Diag("AUR4300.loop"));
 
                 // collection type 暂不强查（可扩展 IEnumerable）
                 AnalyzeExpr(fe.Collection, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
@@ -769,7 +770,7 @@ public sealed class SemanticAnalyzer
 
             case UsingStmtNode us:
                 if (us.Await && !_inAsyncFunction)
-                    Emit("AUR2220", DiagnosticSeverity.Error, us.Span, "await using 只能在 async 函数中使用");
+                    Emit("AUR2220", DiagnosticSeverity.Error, us.Span, Msg.Diag("AUR2220.await_using"));
 
                 AnalyzeUsingResource(us.Resource, ctx, us.Await);
                 if (us.Body != null) AnalyzeBlock(us.Body, ctx);
@@ -809,13 +810,13 @@ public sealed class SemanticAnalyzer
                 foreach (var d in ud.Decls)
                 {
                     if (d.Name.Text == "item")
-                        Emit("AUR4300", DiagnosticSeverity.Error, d.Span, "禁止把 item 用作 using 变量名（item 仅用于谓词索引器）");
+                        Emit("AUR4300", DiagnosticSeverity.Error, d.Span, Msg.Diag("AUR4300.using"));
 
                     var initT = AnalyzeExpr(d.Init, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
                     var declT = d.Type != null ? _typeResolver!.Resolve(d.Type, ctx) : initT;
                     var sym = new LocalSymbol(d.Name.Text, d.Mutability, declT, d.Span);
                     if (!_scope!.TryDeclare(sym))
-                        Emit("AUR1020", DiagnosticSeverity.Error, d.Span, $"重复定义变量：{d.Name.Text}");
+                        Emit("AUR1020", DiagnosticSeverity.Error, d.Span, Msg.Diag("AUR1020.var", d.Name.Text));
 
                     CheckDisposableShape(d.Init, ctx, isAwait);
                 }
@@ -837,20 +838,20 @@ public sealed class SemanticAnalyzer
                 if (!isAwait)
                 {
                     if (!typeof(IDisposable).IsAssignableFrom(dotnet))
-                        Emit("AUR2620", DiagnosticSeverity.Error, expr.Span, $"using 资源必须实现 IDisposable：{n.FullName}");
+                        Emit("AUR2620", DiagnosticSeverity.Error, expr.Span, Msg.Diag("AUR2620", n.FullName));
                 }
                 else
                 {
                     var iAsyncDisp = Type.GetType("System.IAsyncDisposable");
                     if (iAsyncDisp != null && !iAsyncDisp.IsAssignableFrom(dotnet))
-                        Emit("AUR2621", DiagnosticSeverity.Error, expr.Span, $"await using 资源必须实现 IAsyncDisposable：{n.FullName}");
+                        Emit("AUR2621", DiagnosticSeverity.Error, expr.Span, Msg.Diag("AUR2621", n.FullName));
                 }
                 return;
             }
         }
 
         // 无法确定：给出 warning（你可以改成 error）
-        Emit("AUR2622", DiagnosticSeverity.Warning, expr.Span, "using 资源的 IDisposable/IAsyncDisposable 约束在 v1 中无法完全判定（可忽略或完善类型解析）");
+        Emit("AUR2622", DiagnosticSeverity.Warning, expr.Span, Msg.Diag("AUR2622"));
     }
 
     private static Type? TryResolveDotNetType(string fullName)
@@ -880,7 +881,7 @@ public sealed class SemanticAnalyzer
         {
             var name = c.Name.Text;
             if (name == "item")
-                Emit("AUR4300", DiagnosticSeverity.Error, c.Span, "禁止把 item 用作 catch 变量名（item 仅用于谓词索引器）");
+                Emit("AUR4300", DiagnosticSeverity.Error, c.Span, Msg.Diag("AUR4300.catch"));
 
             _scope!.TryDeclare(new LocalSymbol(name, Mutability.Let, TypeRef.Unknown, c.Span));
         }
@@ -894,7 +895,7 @@ public sealed class SemanticAnalyzer
                 var parts = n.FullName.Split('.');
                 var last = parts.Length > 0 ? parts[^1] : n.FullName;
                 if (last != "Exception" && !last.EndsWith("Exception", StringComparison.Ordinal))
-                    Emit("AUR2630", DiagnosticSeverity.Error, c.Span, $"catch 类型必须是 Exception 或派生：实际 {n.FullName}");
+                    Emit("AUR2630", DiagnosticSeverity.Error, c.Span, Msg.Diag("AUR2630", n.FullName));
             }
         }
 
@@ -916,7 +917,7 @@ public sealed class SemanticAnalyzer
                 foreach (var v in vars)
                 {
                     if (v == "item")
-                        Emit("AUR4300", DiagnosticSeverity.Error, cl.Span, "pattern 变量不允许叫 item（item 仅用于谓词索引器）");
+                        Emit("AUR4300", DiagnosticSeverity.Error, cl.Span, Msg.Diag("AUR4300.pattern"));
 
                     if (declared.ContainsKey(v))
                         continue; // same name from another label: ignore (v1)
@@ -981,18 +982,18 @@ public sealed class SemanticAnalyzer
     private void AnalyzeVarDecl(VarDeclStmtNode v, ResolutionContext ctx)
     {
         if (v.Name.Text == "item")
-            Emit("AUR4300", DiagnosticSeverity.Error, v.Span, "禁止把 item 用作变量名（item 仅用于谓词索引器）");
+            Emit("AUR4300", DiagnosticSeverity.Error, v.Span, Msg.Diag("AUR4300.var"));
 
         var initType = v.Init != null ? AnalyzeExpr(v.Init, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1) : TypeRef.Unknown;
         var declaredType = v.Type != null ? _typeResolver!.Resolve(v.Type, ctx) : initType;
 
         var sym = new LocalSymbol(v.Name.Text, v.Mutability, declaredType, v.Span);
         if (!_scope!.TryDeclare(sym))
-            Emit("AUR1020", DiagnosticSeverity.Error, v.Span, $"重复定义变量：{v.Name.Text}");
+            Emit("AUR1020", DiagnosticSeverity.Error, v.Span, Msg.Diag("AUR1020.var", v.Name.Text));
 
         // let 必须初始化（建议）
         if (v.Mutability == Mutability.Let && v.Init == null)
-            Emit("AUR2104", DiagnosticSeverity.Error, v.Span, "let 必须在声明时初始化");
+            Emit("AUR2104", DiagnosticSeverity.Error, v.Span, Msg.Diag("AUR2104"));
     }
 
     /* =========================
@@ -1013,7 +1014,7 @@ public sealed class SemanticAnalyzer
             case NameExprNode name:
                 // item 仅允许出现在谓词索引器 index 表达式内
                 if (name.Name.Text == "item" && !inPredicateIndex)
-                    Emit("AUR4300", DiagnosticSeverity.Error, name.Span, "item 只能用于谓词索引器：collection[item ...]");
+                    Emit("AUR4300", DiagnosticSeverity.Error, name.Span, Msg.Diag("AUR4300.name"));
                 return LookupNameType(name.Name.Text);
 
             case AssignmentExprNode ass:
@@ -1021,7 +1022,7 @@ public sealed class SemanticAnalyzer
                 if (ass.Left is NameExprNode ln && _scope != null && _scope.TryLookup(ln.Name.Text, out var local))
                 {
                     if (local.Mutability == Mutability.Let)
-                        Emit("AUR2101", DiagnosticSeverity.Error, ass.Span, $"不可变绑定 let 不允许赋值：{ln.Name.Text}");
+                        Emit("AUR2101", DiagnosticSeverity.Error, ass.Span, Msg.Diag("AUR2101", ln.Name.Text));
                 }
 
                 // ??= 左侧可空检查（尽力而为）
@@ -1029,7 +1030,7 @@ public sealed class SemanticAnalyzer
                 {
                     var lt = InferExprType(ass.Left, ctx);
                     if (!IsNullableType(lt))
-                        Emit("AUR2302", DiagnosticSeverity.Error, ass.Left.Span, $"??= 只能用于可空目标：{lt}");
+                        Emit("AUR2302", DiagnosticSeverity.Error, ass.Left.Span, Msg.Diag("AUR2302", lt));
                 }
 
                 AnalyzeExpr(ass.Left, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
@@ -1042,7 +1043,7 @@ public sealed class SemanticAnalyzer
                 var t2 = AnalyzeExpr(ce.Else, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
                 var ct = CommonType(t1, t2);
                 if (ct == TypeRef.Unknown)
-                    Emit("AUR2321", DiagnosticSeverity.Error, ce.Span, $"条件表达式分支类型不兼容：{t1} 与 {t2}");
+                    Emit("AUR2321", DiagnosticSeverity.Error, ce.Span, Msg.Diag("AUR2321", t1, t2));
                 return ct;
 
             case BinaryExprNode bin:
@@ -1052,7 +1053,7 @@ public sealed class SemanticAnalyzer
 
             case UnaryExprNode un:
                 if (un.Op == "await" && !_inAsyncFunction)
-                    Emit("AUR2220", DiagnosticSeverity.Error, un.Span, "await 只能在 async 函数中使用");
+                    Emit("AUR2220", DiagnosticSeverity.Error, un.Span, Msg.Diag("AUR2220.await"));
                 return AnalyzeExpr(un.Operand, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
 
             case CallExprNode call:
@@ -1092,11 +1093,11 @@ public sealed class SemanticAnalyzer
                     if (h is LambdaExprNode lam)
                     {
                         if (lam.Parameters.Count != 1)
-                            Emit("AUR2410", DiagnosticSeverity.Error, h.Span, "异常守护 handler 必须是 (Exception)->T 形式（lambda 参数个数必须为 1）");
+                            Emit("AUR2410", DiagnosticSeverity.Error, h.Span, Msg.Diag("AUR2410.error"));
                     }
                     else
                     {
-                        Emit("AUR2410", DiagnosticSeverity.Warning, h.Span, "异常守护 handler 建议使用 (Exception)->T lambda（v1 未完全类型检查）");
+                        Emit("AUR2410", DiagnosticSeverity.Warning, h.Span, Msg.Diag("AUR2410.warn"));
                     }
 
                     AnalyzeExpr(h, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
@@ -1108,11 +1109,11 @@ public sealed class SemanticAnalyzer
                 foreach (var p in lam2.Parameters)
                 {
                     if (p.Name.Text == "item")
-                        Emit("AUR4300", DiagnosticSeverity.Error, p.Span, "禁止把 item 用作 lambda 参数名（item 仅用于谓词索引器）");
+                        Emit("AUR4300", DiagnosticSeverity.Error, p.Span, Msg.Diag("AUR4300.lambda"));
 
                     var pt = p.Type != null ? _typeResolver!.Resolve(p.Type, ctx) : TypeRef.Unknown;
                     if (!_scope!.TryDeclare(new LocalSymbol(p.Name.Text, Mutability.Let, pt, p.Span)))
-                        Emit("AUR1020", DiagnosticSeverity.Error, p.Span, $"lambda 参数重复：{p.Name.Text}");
+                        Emit("AUR1020", DiagnosticSeverity.Error, p.Span, Msg.Diag("AUR1020.lambda", p.Name.Text));
                 }
                 var bodyT = AnalyzeExpr(lam2.Body, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
                 PopScope();
@@ -1143,11 +1144,11 @@ public sealed class SemanticAnalyzer
                 }
 
                 if (!hasDiscard)
-                    Emit("AUR2511", DiagnosticSeverity.Error, sw.Span, "switch expression 必须穷尽：请添加 '_' 分支");
+                    Emit("AUR2511", DiagnosticSeverity.Error, sw.Span, Msg.Diag("AUR2511"));
 
                 if (acc == null) return TypeRef.Unknown;
                 if (acc == TypeRef.Unknown)
-                    Emit("AUR2510", DiagnosticSeverity.Warning, sw.Span, "switch expression 分支结果类型无法可靠合并（v1 类型推导较弱）");
+                    Emit("AUR2510", DiagnosticSeverity.Warning, sw.Span, Msg.Diag("AUR2510"));
                 return acc;
 
             case NewExprNode ne:
@@ -1156,11 +1157,11 @@ public sealed class SemanticAnalyzer
                 if (nt is TypeRef.Named ntt)
                 {
                     if (ntt.ResolvedKind is TypeKind.Trait or TypeKind.Enum or TypeKind.Window)
-                        Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, $"不能对 {ntt.ResolvedKind} 使用 new：{ntt.FullName}");
+                        Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.kind", ntt.ResolvedKind, ntt.FullName));
                 }
 
                 if (ne.Args.Count == 0)
-                    Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, "Aura 禁止无参 new()：实例化必须通过 builder（至少传入 builder 参数）");
+                    Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.noarg"));
 
                 foreach (var a in ne.Args)
                     AnalyzeArgument(a, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
@@ -1178,7 +1179,7 @@ public sealed class SemanticAnalyzer
         {
             case PlaceholderArgNode ph:
                 if (!allowPlaceholder || pipeStageIndex <= 0)
-                    Emit("AUR2402", DiagnosticSeverity.Error, ph.Span, "占位符 '_' 只能用于管道调用的右侧 stage 参数中");
+                    Emit("AUR2402", DiagnosticSeverity.Error, ph.Span, Msg.Diag("AUR2402"));
                 break;
 
             case PositionalArgNode pa:
@@ -1231,7 +1232,7 @@ public sealed class SemanticAnalyzer
         // 禁止位运算补强（即使语法层没有，也防御性）
         if (op is "&" or "|" or "^" or "<<" or ">>")
         {
-            Emit("AUR4400", DiagnosticSeverity.Error, span, $"Aura 不支持位运算符：{op}");
+            Emit("AUR4400", DiagnosticSeverity.Error, span, Msg.Diag("AUR4400", op));
             return TypeRef.Error;
         }
 
@@ -1278,7 +1279,7 @@ public sealed class SemanticAnalyzer
         if (op == "??")
         {
             if (!IsNullableType(left))
-                Emit("AUR2310", DiagnosticSeverity.Error, span, $"?? 左侧必须是可空表达式：实际 {left}");
+                Emit("AUR2310", DiagnosticSeverity.Error, span, Msg.Diag("AUR2310", left));
             return CommonType(UnwrapNullable(left), right);
         }
 
@@ -1322,7 +1323,7 @@ public sealed class SemanticAnalyzer
     {
         if (t is TypeRef.Builtin b && b.Kind == BuiltinTypeKind.Bool) return;
         if (t == TypeRef.Unknown) return; // v1：不强报
-        Emit("AUR2601", DiagnosticSeverity.Error, span, $"{message}（实际 {t}）");
+        Emit("AUR2601", DiagnosticSeverity.Error, span, Msg.Diag("AUR2601", message, t));
     }
 
     /* =========================

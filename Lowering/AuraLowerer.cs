@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using AuraLang.Ast;
+using AuraLang.I18n;
 
 namespace AuraLang.Lowering;
 
@@ -127,7 +128,7 @@ public sealed class AuraLowerer
                 if (fns.Count > 0)
                 {
                     _diags.Add(new LoweringDiagnostic(fns[0].Span, "LWR4001", LoweringSeverity.Error,
-                        $"Invalid state spec on state function '{fname}'. Expected Enum.Value."));
+                        Msg.Diag("LWR4001", fname)));
                 }
                 continue;
             }
@@ -335,7 +336,7 @@ foreach (var st in fb.Block.Statements)
                 if (opType is null)
                 {
                     _diags.Add(new LoweringDiagnostic(op.Span, "LWR4002", LoweringSeverity.Error,
-                        $"Could not resolve function type for op '{op.Name.Text}' in derivable function '{fn.Name.Text}'."));
+                        Msg.Diag("LWR4002", op.Name.Text, fn.Name.Text)));
                     continue;
                 }
 
@@ -671,7 +672,7 @@ private bool CanLowerAsyncNonBlocking(BlockStmtNode block)
                         iff.Span,
                         "AURLW3001",
                         LoweringSeverity.Warning,
-                        "await in an if-condition is not supported by the non-blocking async lowering yet; falling back to blocking await for this function."
+                        Msg.Diag("AURLW3001")
                     ));
                     ok = false;
                 }
@@ -686,7 +687,7 @@ private bool CanLowerAsyncNonBlocking(BlockStmtNode block)
                         r.Span,
                         "AURLW3002",
                         LoweringSeverity.Warning,
-                        "await must appear as `return await expr;` (not nested inside a larger expression) for non-blocking async lowering; falling back to blocking await for this function."
+                        Msg.Diag("AURLW3002")
                     ));
                     ok = false;
                 }
@@ -699,7 +700,7 @@ private bool CanLowerAsyncNonBlocking(BlockStmtNode block)
                         v.Span,
                         "AURLW3003",
                         LoweringSeverity.Warning,
-                        "await must appear as the whole initializer (`let x = await expr;`) for non-blocking async lowering; falling back to blocking await for this function."
+                        Msg.Diag("AURLW3003")
                     ));
                     ok = false;
                 }
@@ -721,7 +722,7 @@ private bool CanLowerAsyncNonBlocking(BlockStmtNode block)
                         es.Span,
                         "AURLW3004",
                         LoweringSeverity.Warning,
-                        "await must appear as a standalone statement (`await expr;`) or assignment (`x = await expr;`) for non-blocking async lowering; falling back to blocking await for this function."
+                        Msg.Diag("AURLW3004")
                     ));
                     ok = false;
                 }
@@ -735,7 +736,7 @@ private bool CanLowerAsyncNonBlocking(BlockStmtNode block)
                         st.Span,
                         "AURLW3005",
                         LoweringSeverity.Warning,
-                        $"await in '{st.GetType().Name}' is not supported by the non-blocking async lowering yet; falling back to blocking await for this function."
+                        Msg.Diag("AURLW3005", st.GetType().Name)
                     ));
                     ok = false;
                 }
@@ -949,7 +950,7 @@ private ExprNode MakeIfTaskExpr(IfStmtNode iff, IReadOnlyList<StmtNode> after, T
             iff.Span,
             "AURLW3006",
             LoweringSeverity.Warning,
-            "await in if-condition is not supported by non-blocking async lowering; treating the condition as blocking."
+            Msg.Diag("AURLW3006")
         ));
     }
 
@@ -1482,7 +1483,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
 
             default:
                 _diags.Add(new LoweringDiagnostic(span, "AURLW1000", LoweringSeverity.Warning,
-                    $"Unknown using resource node '{resource.GetType().Name}' - leaving as-is."));
+                    Msg.Diag("AURLW1000", resource.GetType().Name)));
                 break;
         }
 
@@ -1710,7 +1711,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
         if (u.Operand is not NameExprNode nameRef)
         {
             _diags.Add(new LoweringDiagnostic(u.Span, "LWR5001", LoweringSeverity.Error,
-                "derivateof operand must be a function name."));
+                Msg.Diag("LWR5001")));
             return u;
         }
 
@@ -2135,7 +2136,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
         if (t.Type is NamedTypeNode nt && nt.Name.Parts.Count > 1 && nt.TypeArgs.Count == 0)
         {
             _diags.Add(new LoweringDiagnostic(t.Span, "AURLW2100", LoweringSeverity.Warning,
-                "pattern 中的 'TypePattern' 使用了带 '.' 的限定名（例如 Enum.Member）。本次 lowering 将其按常量匹配处理。建议后续在符号绑定阶段将其归类为 ConstantPattern。"));
+                Msg.Diag("AURLW2100")));
 
             var constExpr = QualifiedNameToExpr(nt.Name);
             return new PatternLoweringResult(
@@ -2156,7 +2157,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
         if (inner.Binders.Count > 0)
         {
             _diags.Add(new LoweringDiagnostic(n.Span, "AURLW2001", LoweringSeverity.Error,
-                "not-pattern 中暂不支持变量绑定（capture）。请将绑定移出 not-pattern，或先简化 pattern。"));
+                Msg.Diag("AURLW2001")));
         }
 
         return new PatternLoweringResult(new UnaryExprNode(n.Span, "!", inner.Condition), Array.Empty<VarDeclStmtNode>());
@@ -2182,7 +2183,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
         if (left.Binders.Count > 0 || right.Binders.Count > 0)
         {
             _diags.Add(new LoweringDiagnostic(o.Span, "AURLW2002", LoweringSeverity.Error,
-                "or-pattern 中暂不支持变量绑定（capture）。因为不同分支可能导致变量赋值不一致。请改用不绑定的 pattern，或拆成 if/switch 语句。"));
+                Msg.Diag("AURLW2002")));
         }
 
         return new PatternLoweringResult(
@@ -2215,7 +2216,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
     private PatternLoweringResult LowerListPattern(ExprNode valueExpr, ListPatternNode lp)
     {
         _diags.Add(new LoweringDiagnostic(lp.Span, "AURLW2003", LoweringSeverity.Error,
-            "list-pattern 暂未实现 lowering。后续可以 lowering 成长度检查 + 元素逐个匹配。"));
+            Msg.Diag("AURLW2003")));
 
         return new PatternLoweringResult(MakeBoolLiteral(lp.Span, false), Array.Empty<VarDeclStmtNode>());
     }
@@ -2223,7 +2224,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
     private PatternLoweringResult UnsupportedPattern(ExprNode valueExpr, PatternNode p)
     {
         _diags.Add(new LoweringDiagnostic(p.Span, "AURLW2099", LoweringSeverity.Error,
-            $"Unsupported pattern node for lowering: {p.GetType().Name}"));
+            Msg.Diag("AURLW2099", p.GetType().Name)));
 
         return new PatternLoweringResult(MakeBoolLiteral(p.Span, false), Array.Empty<VarDeclStmtNode>());
     }
@@ -2251,7 +2252,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
             if (seen.TryGetValue(name, out var existing))
             {
                 _diags.Add(new LoweringDiagnostic(span, "AURLW2010", LoweringSeverity.Error,
-                    $"pattern 变量绑定重复：{name}（在同一 pattern 中重复声明）"));
+                    Msg.Diag("AURLW2010", name)));
                 continue;
             }
 
