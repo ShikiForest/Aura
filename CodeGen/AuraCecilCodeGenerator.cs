@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Linq;
 using AuraLang.Ast;
+using AuraLang.I18n;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -79,6 +80,9 @@ public sealed class AuraCecilCodeGenerator
 
         CreateTypeStubs(module, auraModule, ast, userTypes, astTypeNodes, windowNodes);
 
+        // v3: Pass 1b-extra - wire inheritance and add struct default ctors
+        WireInheritanceAndStructCtors(module, ast, userTypes);
+
         // v3: Pass 1b - emit best-effort fields/properties for classes/structs (optional but helps this/window).
         EmitBestEffortFieldsAndProperties(module, astTypeNodes, importedNamespaces, userTypes);
 
@@ -101,7 +105,7 @@ public sealed class AuraCecilCodeGenerator
                 if (!topLevelMethodsByName.TryAdd(m.Name, m))
                 {
                     _diags.Add(new CodeGenDiagnostic(fn.Span, "CG1002", CodeGenSeverity.Warning,
-                        $"Duplicate top-level function name '{m.Name}' (overloads not supported yet). Keeping the first one."));
+                        Msg.Diag("CG1002", m.Name)));
                 }
             }
         }
@@ -240,7 +244,7 @@ public sealed class AuraCecilCodeGenerator
         if (userTypes.ContainsKey("Room"))
         {
             _diags.Add(new CodeGenDiagnostic(default, "CG7001", CodeGenSeverity.Warning,
-                "A user-defined type named 'Room' exists; skipping built-in Room runtime type emission."));
+                Msg.Diag("CG7001")));
             return;
         }
 
@@ -250,7 +254,7 @@ public sealed class AuraCecilCodeGenerator
         var onMessageMethod = iRoomReceiver.Methods.First(m => m.Name == "OnMessage");
 
         var td = new TypeDefinition("", "Room",
-            TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
             module.TypeSystem.Object);
 
         // private string _name;
@@ -467,6 +471,64 @@ public sealed class AuraCecilCodeGenerator
         userTypes["Room"] = td;
     }
 
+    private void WireInheritanceAndStructCtors(
+        ModuleDefinition module,
+        CompilationUnitNode ast,
+        Dictionary<string, TypeDefinition> userTypes)
+    {
+        foreach (var item in ast.Items)
+        {
+            var kind = item.GetType().Name;
+            if (kind is not "ClassDeclNode" and not "StructDeclNode") continue;
+
+            var typeName = AstReflection.TryGetNameText(item);
+            if (typeName is null || !userTypes.TryGetValue(typeName, out var td)) continue;
+
+            // Wire base class for class declarations
+            if (kind == "ClassDeclNode" && item is ClassDeclNode classNode && classNode.BaseTypes.Count > 0)
+            {
+                foreach (var baseTypeNode in classNode.BaseTypes)
+                {
+                    var baseName = baseTypeNode switch
+                    {
+                        NamedTypeNode ntn => ntn.Name.ToString(),
+                        _ => null
+                    };
+                    if (baseName is not null && userTypes.TryGetValue(baseName, out var baseTd))
+                    {
+                        // Set base type to the Aura user-defined base class
+                        td.BaseType = module.ImportReference(baseTd);
+
+                        // Update the auto-generated .ctor to call base class .ctor instead of object::.ctor
+                        var subCtor = td.Methods.FirstOrDefault(m => m.Name == ".ctor" && m.Parameters.Count == 0);
+                        var baseCtor = baseTd.Methods.FirstOrDefault(m => m.Name == ".ctor" && m.Parameters.Count == 0);
+                        if (subCtor is not null && baseCtor is not null)
+                        {
+                            subCtor.Body.Instructions.Clear();
+                            var il = subCtor.Body.GetILProcessor();
+                            il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ldarg_0));
+                            il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Call, module.ImportReference(baseCtor)));
+                            il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ret));
+                        }
+
+                        break; // single inheritance
+                    }
+                }
+            }
+
+            // Add default .ctor for structs (needed for newobj)
+            if (kind == "StructDeclNode" && !td.Methods.Any(m => m.Name == ".ctor"))
+            {
+                var ctor = new MethodDefinition(".ctor",
+                    MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+                    module.TypeSystem.Void);
+                td.Methods.Add(ctor);
+                var il = ctor.Body.GetILProcessor();
+                il.Append(il.Create(Mono.Cecil.Cil.OpCodes.Ret));
+            }
+        }
+    }
+
     private void CreateTypeStubs(
         ModuleDefinition module,
         TypeDefinition auraModule,
@@ -484,7 +546,8 @@ public sealed class AuraCecilCodeGenerator
                 var name = AstReflection.TryGetNameText(item) ?? $"__AnonType{userTypes.Count}";
                 var isPublic = AstReflection.TryIsPublicVisibility(item, out var pub) && pub;
 
-                var attrs = isPublic ? TypeAttributes.Public : TypeAttributes.NotPublic;
+                // Use Nested visibility because these types are added as auraModule.NestedTypes
+                var attrs = isPublic ? TypeAttributes.NestedPublic : TypeAttributes.NestedAssembly;
                 TypeDefinition td;
 
                 if (kind is "TraitDeclNode" or "InterfaceDeclNode" or "WindowDeclNode")
@@ -720,7 +783,7 @@ if (fn.TypeParams.Count > 0)
     if (fn.WhereClauses.Count > 0)
     {
         _diags.Add(new CodeGenDiagnostic(fn.Span, "CG1103", CodeGenSeverity.Warning,
-            $"Generic constraints (where-clauses) are not emitted yet; constraints will be ignored for '{fn.Name.Text}'."));
+            Msg.Diag("CG1103", fn.Name.Text)));
     }
 }
 
@@ -756,7 +819,7 @@ method.ReturnType = ResolveReturnType(module, fn.ReturnSpec, importedNamespaces,
             if (p.Type is null)
             {
                 _diags.Add(new CodeGenDiagnostic(p.Span, "CG1101", CodeGenSeverity.Error,
-                    $"Parameter '{p.Name.Text}' must have an explicit type in codegen v3."));
+                    Msg.Diag("CG1101", p.Name.Text)));
                 method.Parameters.Add(new ParameterDefinition(p.Name.Text, ParameterAttributes.None, module.TypeSystem.Object));
             }
             else
@@ -810,7 +873,7 @@ private static TypeReference WrapAsyncReturnType(ModuleDefinition module, TypeRe
         if (!OperatorClrNames.TryGetValue(opDecl.Op, out var clrName))
         {
             _diags.Add(new CodeGenDiagnostic(opDecl.Span, "CG6001", CodeGenSeverity.Error,
-                $"Unsupported operator for overloading: '{opDecl.Op}'."));
+                Msg.Diag("CG6001", opDecl.Op)));
             return null;
         }
 
@@ -826,7 +889,7 @@ private static TypeReference WrapAsyncReturnType(ModuleDefinition module, TypeRe
             if (p.Type is null)
             {
                 _diags.Add(new CodeGenDiagnostic(p.Span, "CG6002", CodeGenSeverity.Error,
-                    $"Operator parameter '{p.Name.Text}' must have an explicit type."));
+                    Msg.Diag("CG6002", p.Name.Text)));
                 method.Parameters.Add(new ParameterDefinition(p.Name.Text, ParameterAttributes.None, module.TypeSystem.Object));
             }
             else
@@ -857,7 +920,7 @@ private static TypeReference WrapAsyncReturnType(ModuleDefinition module, TypeRe
         if (ret is StateSpecNode)
             return module.TypeSystem.Void;
 
-        _diags.Add(new CodeGenDiagnostic(span, "CG1102", CodeGenSeverity.Warning, $"Unknown return spec; treating as void."));
+        _diags.Add(new CodeGenDiagnostic(span, "CG1102", CodeGenSeverity.Warning, Msg.Diag("CG1102")));
         return module.TypeSystem.Void;
     }
 
@@ -905,7 +968,7 @@ private static TypeReference WrapAsyncReturnType(ModuleDefinition module, TypeRe
                     else
                     {
                         _diags.Add(new CodeGenDiagnostic(cd.Span, "CG7101", CodeGenSeverity.Warning,
-                            $"[BuildMe] on '{cd.Name.Text}' missing 'builder' argument. Skipping registration."));
+                            Msg.Diag("CG7101", cd.Name.Text)));
                     }
                 }
             }
@@ -942,7 +1005,7 @@ private static TypeReference WrapAsyncReturnType(ModuleDefinition module, TypeRe
             if (!userTypes.TryGetValue(builderName, out var builderType))
             {
                 _diags.Add(new CodeGenDiagnostic(default, "CG7102", CodeGenSeverity.Warning,
-                    $"Builder type '{builderName}' not found for [BuildMe] registration."));
+                    Msg.Diag("CG7102", builderName)));
                 continue;
             }
 
@@ -959,7 +1022,7 @@ private static TypeReference WrapAsyncReturnType(ModuleDefinition module, TypeRe
             il.InsertBefore(retInstr, il.Create(Mono.Cecil.Cil.OpCodes.Call, registerBuilderRef));
 
             _diags.Add(new CodeGenDiagnostic(default, "CG7100", CodeGenSeverity.Info,
-                $"[BuildMe] registration emitted for '{targetType.Name}' with builder '{builderName}'."));
+                Msg.Diag("CG7100", targetType.Name, builderName)));
         }
     }
 }

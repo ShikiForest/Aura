@@ -16,7 +16,7 @@ public static class AuraRuntimeEmitter
             return;
 
         var td = new TypeDefinition("", "AuraGlobal",
-            TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
             module.TypeSystem.Object);
 
         // --- Fields ---
@@ -178,7 +178,7 @@ public static class AuraRuntimeEmitter
             return;
 
         var iface = new TypeDefinition("", "IRoomReceiver",
-            TypeAttributes.Public | TypeAttributes.Interface | TypeAttributes.Abstract,
+            TypeAttributes.NestedPublic | TypeAttributes.Interface | TypeAttributes.Abstract,
             module.TypeSystem.Object);
 
         // void OnMessage(string message, object args)

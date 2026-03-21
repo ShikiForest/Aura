@@ -7,6 +7,7 @@ using TA = Mono.Cecil.TypeAttributes;
 using PA = Mono.Cecil.ParameterAttributes;
 using FA = Mono.Cecil.FieldAttributes;
 using AuraLang.Ast;
+using AuraLang.I18n;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
@@ -139,7 +140,7 @@ internal sealed class CecilEmitter
         }
         else
         {
-            _diags.Add(new CodeGenDiagnostic(fn.Span, "CG2000", CodeGenSeverity.Error, $"Unknown function body form for {fn.Name.Text}."));
+            _diags.Add(new CodeGenDiagnostic(fn.Span, "CG2000", CodeGenSeverity.Error, Msg.Diag("CG2000", fn.Name.Text)));
             _il.Append(_il.Create(OpCodes.Ret));
         }
 
@@ -172,7 +173,7 @@ internal sealed class CecilEmitter
             if (retType.MetadataType != MetadataType.Void)
             {
                 _diags.Add(new CodeGenDiagnostic(span, "CG2001", CodeGenSeverity.Error,
-                    $"Missing return value for non-void method '{_method.Name}'."));
+                    Msg.Diag("CG2001.error", _method.Name)));
                 EmitDefault(retType);
             }
             _il.Append(_il.Create(OpCodes.Ret));
@@ -306,7 +307,7 @@ internal sealed class CecilEmitter
                     if (_method.ReturnType.MetadataType != MetadataType.Void)
                     {
                         _diags.Add(new CodeGenDiagnostic(r.Span, "CG2101", CodeGenSeverity.Error,
-                            $"Return statement missing value in non-void method '{_method.Name}'."));
+                            Msg.Diag("CG2101", _method.Name)));
                         EmitDefault(_method.ReturnType);
                     }
                     _il.Append(_il.Create(OpCodes.Ret));
@@ -332,9 +333,12 @@ internal sealed class CecilEmitter
                 EmitTryStmt(ts);
                 break;
 
+            case EmptyStmtNode:
+                break; // no-op — ASI may generate extra semicolons; silently ignore
+
             default:
                 _diags.Add(new CodeGenDiagnostic(st.Span, "CG2199", CodeGenSeverity.Error,
-                    $"Statement kind not supported in codegen v3: {st.GetType().Name}"));
+                    Msg.Diag("CG2199", st.GetType().Name)));
                 break;
         }
     }
@@ -355,7 +359,7 @@ internal sealed class CecilEmitter
         else
         {
             _diags.Add(new CodeGenDiagnostic(v.Span, "CG2201", CodeGenSeverity.Error,
-                $"Local '{name}' needs a type or initializer in codegen v3."));
+                Msg.Diag("CG2201", name)));
             varType = _module.TypeSystem.Object;
         }
 
@@ -577,6 +581,29 @@ case BinaryExprNode b:
 
             case MemberAccessExprNode ma:
                 {
+                    // First, try user-defined types (Cecil TypeDefinition)
+                    var tgtType = InferExprType(ma.Target);
+                    TypeDefinition? tgtTd = null;
+                    if (tgtType is TypeDefinition tdd2) tgtTd = tdd2;
+                    else _userTypes.TryGetValue(tgtType.Name, out tgtTd);
+
+                    if (tgtTd is not null)
+                    {
+                        // Check inheritance chain
+                        var search = tgtTd;
+                        while (search is not null)
+                        {
+                            var getter = search.Methods.FirstOrDefault(m => m.Name == $"get_{ma.Member.Text}");
+                            if (getter is not null) return getter.ReturnType;
+                            var bf = search.Fields.FirstOrDefault(f => f.Name == $"<{ma.Member.Text}>k__BackingField");
+                            if (bf is not null) return bf.FieldType;
+                            var next = search.BaseType;
+                            if (next is null) break;
+                            _userTypes.TryGetValue(next.Name, out search);
+                        }
+                        return _module.TypeSystem.Object;
+                    }
+
                     var mi = TryResolveMember(ma, out _, out _, out _);
                     if (mi is PropertyInfo pi)
                         return _module.ImportReference(pi.PropertyType);
@@ -605,9 +632,12 @@ case BinaryExprNode b:
             case LambdaExprNode lam:
                 return InferLambdaDelegateType(lam);
 
+            case NewExprNode ne:
+                return ResolveType(_module, ne.TypeRef, _imports, _userTypes, _genericContext, _diags, ne.Span);
+
             default:
                 _diags.Add(new CodeGenDiagnostic(expr.Span, "CG2001", CodeGenSeverity.Warning,
-                    $"Cannot infer type for expression '{expr.GetType().Name}'; defaulting to object."));
+                    Msg.Diag("CG2001.warn", expr.GetType().Name)));
                 return _module.TypeSystem.Object;
         }
     }
@@ -628,7 +658,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
     }
 
     _diags.Add(new CodeGenDiagnostic(span, "CG3010", CodeGenSeverity.Error,
-        $"await expects System.Threading.Tasks.Task or Task<T>, got '{taskType.FullName}'"));
+        Msg.Diag("CG3010", taskType.FullName)));
     return _module.TypeSystem.Object;
 }
 
@@ -731,9 +761,13 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
                 EmitLambda(lam, expected);
                 break;
 
+            case NewExprNode newExpr:
+                EmitNewExpr(newExpr);
+                break;
+
             default:
                 _diags.Add(new CodeGenDiagnostic(expr.Span, "CG3000", CodeGenSeverity.Error,
-                    $"Expression kind not supported in codegen v3: {expr.GetType().Name}"));
+                    Msg.Diag("CG3000", expr.GetType().Name)));
                 _il.Append(_il.Create(OpCodes.Ldnull));
                 break;
         }
@@ -748,7 +782,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
                     _il.Append(_il.Create(OpCodes.Ldc_I4, i));
                 else
                 {
-                    _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3001", CodeGenSeverity.Error, $"Invalid int literal: {lit.RawText}"));
+                    _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3001", CodeGenSeverity.Error, Msg.Diag("CG3001", lit.RawText)));
                     _il.Append(_il.Create(OpCodes.Ldc_I4_0));
                 }
                 break;
@@ -774,7 +808,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
                     _il.Append(_il.Create(OpCodes.Ldc_R8, d));
                 else
                 {
-                    _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3002", CodeGenSeverity.Error, $"Invalid float literal: {lit.RawText}"));
+                    _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3002", CodeGenSeverity.Error, Msg.Diag("CG3002.float", lit.RawText)));
                     _il.Append(_il.Create(OpCodes.Ldc_R8, 0.0));
                 }
                 break;
@@ -787,7 +821,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
                     _il.Append(_il.Create(OpCodes.Ldc_I4, (int)raw[0]));
                 else
                 {
-                    _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3003", CodeGenSeverity.Error, $"Invalid char literal: {lit.RawText}"));
+                    _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3003", CodeGenSeverity.Error, Msg.Diag("CG3003.char", lit.RawText)));
                     _il.Append(_il.Create(OpCodes.Ldc_I4_0));
                 }
                 break;
@@ -797,7 +831,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
                 break;
 
             default:
-                _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3004", CodeGenSeverity.Warning, $"Unknown literal kind: {lit.Kind}"));
+                _diags.Add(new CodeGenDiagnostic(lit.Span, "CG3004", CodeGenSeverity.Warning, Msg.Diag("CG3004.literal", lit.Kind)));
                 _il.Append(_il.Create(OpCodes.Ldnull));
                 break;
         }
@@ -827,7 +861,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
             if (!_isInstanceMethod)
             {
                 _diags.Add(new CodeGenDiagnostic(n.Span, "CG3505", CodeGenSeverity.Error,
-                    $"Captured field '{name}' used, but current method is not an instance method."));
+                    Msg.Diag("CG3505", name)));
                 _il.Append(_il.Create(OpCodes.Ldnull));
                 return;
             }
@@ -837,29 +871,47 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
             return;
         }
 
-        // v3: implicit this member access
+        // v3: implicit this member access (walks up inheritance chain)
         if (_isInstanceMethod)
         {
-            // field?
-            var f = _declaringType.Fields.FirstOrDefault(ff => ff.Name == name);
-            if (f is not null)
+            var searchTd = _declaringType;
+            while (searchTd is not null)
             {
-                _il.Append(_il.Create(OpCodes.Ldarg_0));
-                _il.Append(_il.Create(OpCodes.Ldfld, f));
-                return;
-            }
+                // field?
+                var f = searchTd.Fields.FirstOrDefault(ff => ff.Name == name);
+                if (f is not null)
+                {
+                    _il.Append(_il.Create(OpCodes.Ldarg_0));
+                    _il.Append(_il.Create(OpCodes.Ldfld, f));
+                    return;
+                }
 
-            // property?
-            var p = _declaringType.Properties.FirstOrDefault(pp => pp.Name == name);
-            if (p?.GetMethod is not null)
-            {
-                _il.Append(_il.Create(OpCodes.Ldarg_0));
-                _il.Append(_il.Create(OpCodes.Callvirt, p.GetMethod));
-                return;
+                // property?
+                var p = searchTd.Properties.FirstOrDefault(pp => pp.Name == name);
+                if (p?.GetMethod is not null)
+                {
+                    _il.Append(_il.Create(OpCodes.Ldarg_0));
+                    _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(p.GetMethod)));
+                    return;
+                }
+
+                // backing field?
+                var bf = searchTd.Fields.FirstOrDefault(ff => ff.Name == $"<{name}>k__BackingField");
+                if (bf is not null)
+                {
+                    _il.Append(_il.Create(OpCodes.Ldarg_0));
+                    _il.Append(_il.Create(OpCodes.Ldfld, bf));
+                    return;
+                }
+
+                // walk to base class
+                var baseRef = searchTd.BaseType;
+                if (baseRef is null) break;
+                _userTypes.TryGetValue(baseRef.Name, out searchTd);
             }
         }
 
-        _diags.Add(new CodeGenDiagnostic(n.Span, "CG3002", CodeGenSeverity.Error, $"Unknown name: {name}"));
+        _diags.Add(new CodeGenDiagnostic(n.Span, "CG3002", CodeGenSeverity.Error, Msg.Diag("CG3002.name", name)));
         _il.Append(_il.Create(OpCodes.Ldnull));
     }
 
@@ -898,7 +950,7 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
                 break;
 
             default:
-                _diags.Add(new CodeGenDiagnostic(u.Span, "CG3003", CodeGenSeverity.Error, $"Unary operator not supported: {u.Op}"));
+                _diags.Add(new CodeGenDiagnostic(u.Span, "CG3003", CodeGenSeverity.Error, Msg.Diag("CG3003.unary", u.Op)));
                 break;
         }
     }
@@ -912,7 +964,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
     if (clrTaskType is null)
     {
         _diags.Add(new CodeGenDiagnostic(u.Span, "CG3011", CodeGenSeverity.Error,
-            $"await cannot resolve CLR type for '{taskType.FullName}'"));
+            Msg.Diag("CG3011", taskType.FullName)));
         _il.Append(_il.Create(OpCodes.Pop));
         return;
     }
@@ -921,7 +973,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
     if (getAwaiter is null)
     {
         _diags.Add(new CodeGenDiagnostic(u.Span, "CG3012", CodeGenSeverity.Error,
-            $"await target '{clrTaskType.FullName}' has no GetAwaiter() method"));
+            Msg.Diag("CG3012", clrTaskType.FullName ?? clrTaskType.Name)));
         _il.Append(_il.Create(OpCodes.Pop));
         return;
     }
@@ -938,7 +990,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
     if (clrAwaiterType is null)
     {
         _diags.Add(new CodeGenDiagnostic(u.Span, "CG3013", CodeGenSeverity.Error,
-            $"await cannot resolve CLR awaiter type for '{awaiterType.FullName}'"));
+            Msg.Diag("CG3013", awaiterType.FullName)));
         return;
     }
 
@@ -946,7 +998,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
     if (getResult is null)
     {
         _diags.Add(new CodeGenDiagnostic(u.Span, "CG3014", CodeGenSeverity.Error,
-            $"awaiter type '{clrAwaiterType.FullName}' has no GetResult() method"));
+            Msg.Diag("CG3014", clrAwaiterType.FullName ?? clrAwaiterType.Name)));
         return;
     }
 
@@ -1041,13 +1093,43 @@ private void EmitAwaitUnary(UnaryExprNode u)
             case "/": _il.Append(_il.Create(OpCodes.Div)); break;
             case "%": _il.Append(_il.Create(OpCodes.Rem)); break;
 
-            case "==": _il.Append(_il.Create(OpCodes.Ceq)); break;
+            case "==":
+            {
+                var lt2 = InferExprType(b.Left);
+                var rt2 = InferExprType(b.Right);
+                if (lt2.FullName == _module.TypeSystem.String.FullName ||
+                    rt2.FullName == _module.TypeSystem.String.FullName)
+                {
+                    var strEquals = _module.ImportReference(
+                        typeof(string).GetMethod("op_Equality", new[] { typeof(string), typeof(string) })!);
+                    _il.Append(_il.Create(OpCodes.Call, strEquals));
+                }
+                else
+                {
+                    _il.Append(_il.Create(OpCodes.Ceq));
+                }
+                break;
+            }
 
             case "!=":
-                _il.Append(_il.Create(OpCodes.Ceq));
-                _il.Append(_il.Create(OpCodes.Ldc_I4_0));
-                _il.Append(_il.Create(OpCodes.Ceq));
+            {
+                var lt3 = InferExprType(b.Left);
+                var rt3 = InferExprType(b.Right);
+                if (lt3.FullName == _module.TypeSystem.String.FullName ||
+                    rt3.FullName == _module.TypeSystem.String.FullName)
+                {
+                    var strInequality = _module.ImportReference(
+                        typeof(string).GetMethod("op_Inequality", new[] { typeof(string), typeof(string) })!);
+                    _il.Append(_il.Create(OpCodes.Call, strInequality));
+                }
+                else
+                {
+                    _il.Append(_il.Create(OpCodes.Ceq));
+                    _il.Append(_il.Create(OpCodes.Ldc_I4_0));
+                    _il.Append(_il.Create(OpCodes.Ceq));
+                }
                 break;
+            }
 
             case "<": _il.Append(_il.Create(OpCodes.Clt)); break;
             case ">": _il.Append(_il.Create(OpCodes.Cgt)); break;
@@ -1066,9 +1148,9 @@ private void EmitAwaitUnary(UnaryExprNode u)
 
             default:
                 if (b.Op is "&" or "|" or "^" or "<<" or ">>")
-                    _diags.Add(new CodeGenDiagnostic(b.Span, "CG4400", CodeGenSeverity.Error, $"Bitwise operator not supported: {b.Op}"));
+                    _diags.Add(new CodeGenDiagnostic(b.Span, "CG4400", CodeGenSeverity.Error, Msg.Diag("CG4400", b.Op)));
                 else
-                    _diags.Add(new CodeGenDiagnostic(b.Span, "CG3004", CodeGenSeverity.Error, $"Binary operator not supported: {b.Op}"));
+                    _diags.Add(new CodeGenDiagnostic(b.Span, "CG3004", CodeGenSeverity.Error, Msg.Diag("CG3004.binary", b.Op)));
                 break;
         }
     }
@@ -1159,7 +1241,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
         }
 
         _diags.Add(new CodeGenDiagnostic(a.Span, "CG3100", CodeGenSeverity.Error,
-            $"Assignment target not supported in codegen v3: {a.Left.GetType().Name}"));
+            Msg.Diag("CG3100.assign", a.Left.GetType().Name)));
         EmitExpr(a.Right, expected: null);
     }
 
@@ -1168,7 +1250,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
         if (!_isInstanceMethod)
         {
             _diags.Add(new CodeGenDiagnostic(span, "CG3506", CodeGenSeverity.Error,
-                $"Assignment to instance field '{field.Name}' in non-instance method."));
+                Msg.Diag("CG3506", field.Name)));
             EmitExpr(rhs, expected: null);
             return;
         }
@@ -1192,7 +1274,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
         if (!_isInstanceMethod)
         {
             _diags.Add(new CodeGenDiagnostic(span, "CG3507", CodeGenSeverity.Error,
-                $"Assignment to instance property '{prop.Name}' in non-instance method."));
+                Msg.Diag("CG3507", prop.Name)));
             EmitExpr(rhs, expected: null);
             return;
         }
@@ -1201,7 +1283,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
         if (set is null)
         {
             _diags.Add(new CodeGenDiagnostic(span, "CG3508", CodeGenSeverity.Error,
-                $"Property '{prop.Name}' has no setter."));
+                Msg.Diag("CG3508", prop.Name)));
             EmitExpr(rhs, expected: null);
             return;
         }
@@ -1224,7 +1306,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
     {
         if (a.Left is not NameExprNode ne)
         {
-            _diags.Add(new CodeGenDiagnostic(a.Span, "CG3101", CodeGenSeverity.Error, "??= only supported for locals in codegen v3."));
+            _diags.Add(new CodeGenDiagnostic(a.Span, "CG3101", CodeGenSeverity.Error, Msg.Diag("CG3101.coalesce")));
             EmitExpr(a.Right, expected: null);
             return;
         }
@@ -1232,14 +1314,14 @@ private void EmitAwaitUnary(UnaryExprNode u)
         var local = LookupLocal(ne.Name.Text);
         if (local is null)
         {
-            _diags.Add(new CodeGenDiagnostic(a.Span, "CG3102", CodeGenSeverity.Error, "??= target must be a local in codegen v3."));
+            _diags.Add(new CodeGenDiagnostic(a.Span, "CG3102", CodeGenSeverity.Error, Msg.Diag("CG3102")));
             EmitExpr(a.Right, expected: null);
             return;
         }
 
         if (local.VariableType.IsValueType)
         {
-            _diags.Add(new CodeGenDiagnostic(a.Span, "CG3103", CodeGenSeverity.Error, "??= on value types not supported in codegen v3."));
+            _diags.Add(new CodeGenDiagnostic(a.Span, "CG3103", CodeGenSeverity.Error, Msg.Diag("CG3103")));
         }
 
         var end = _il.Create(OpCodes.Nop);
@@ -1290,11 +1372,23 @@ private void EmitAwaitUnary(UnaryExprNode u)
 
     private void EmitMemberAccessValue(MemberAccessExprNode ma)
     {
+        // Check if the target resolves to a user-defined TypeDefinition (Aura class/struct)
+        var targetTypeRef = InferExprType(ma.Target);
+        if (TryEmitUserTypeMemberAccess(ma, targetTypeRef))
+            return;
+
+        // Also handle implicit this member access (e.g. other.x inside a method)
+        if (_isInstanceMethod && _declaringType is not null)
+        {
+            if (TryEmitUserTypeMemberAccessOnExpr(ma, _declaringType))
+                return;
+        }
+
         // If the target is implicit this? (not represented here; handled in EmitName)
         var resolved = TryResolveMember(ma, out var isStatic, out var targetType, out _);
         if (resolved is null)
         {
-            _diags.Add(new CodeGenDiagnostic(ma.Span, "CG3200", CodeGenSeverity.Error, $"Cannot resolve member access: {ma.Member.Text}"));
+            _diags.Add(new CodeGenDiagnostic(ma.Span, "CG3200", CodeGenSeverity.Error, Msg.Diag("CG3200", ma.Member.Text)));
             _il.Append(_il.Create(OpCodes.Ldnull));
             return;
         }
@@ -1313,7 +1407,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
                 var getter = pi.GetMethod;
                 if (getter is null)
                 {
-                    _diags.Add(new CodeGenDiagnostic(ma.Span, "CG3201", CodeGenSeverity.Error, $"Property has no getter: {pi.Name}"));
+                    _diags.Add(new CodeGenDiagnostic(ma.Span, "CG3201", CodeGenSeverity.Error, Msg.Diag("CG3201", pi.Name)));
                     _il.Append(_il.Create(OpCodes.Ldnull));
                     return;
                 }
@@ -1328,10 +1422,184 @@ private void EmitAwaitUnary(UnaryExprNode u)
 
             case MethodInfo mi:
                 _diags.Add(new CodeGenDiagnostic(ma.Span, "CG3202", CodeGenSeverity.Error,
-                    $"Method group used as value is not supported in codegen v3: {mi.Name}"));
+                    Msg.Diag("CG3202", mi.Name)));
                 _il.Append(_il.Create(OpCodes.Ldnull));
                 break;
         }
+    }
+
+    /// <summary>
+    /// Attempts to emit a property/field getter for user-defined (Cecil) types.
+    /// Returns true if the member was found and emitted.
+    /// </summary>
+    private bool TryEmitUserTypeMemberAccess(MemberAccessExprNode ma, TypeReference targetTypeRef)
+    {
+        TypeDefinition? td = null;
+        if (targetTypeRef is TypeDefinition tdd)
+            td = tdd;
+        else if (targetTypeRef is TypeReference tr)
+            _userTypes.TryGetValue(tr.Name, out td);
+
+        if (td is null) return false;
+
+        return TryEmitUserTypeMemberAccessOnExpr(ma, td);
+    }
+
+    private bool TryEmitUserTypeMemberAccessOnExpr(MemberAccessExprNode ma, TypeDefinition td)
+    {
+        var memberName = ma.Member.Text;
+
+        // Look for getter method (auto-property)
+        var getter = td.Methods.FirstOrDefault(m => m.Name == $"get_{memberName}");
+        if (getter is not null)
+        {
+            EmitExpr(ma.Target, expected: null);
+            _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(getter)));
+            return true;
+        }
+
+        // Look for backing field directly
+        var backingField = td.Fields.FirstOrDefault(f => f.Name == $"<{memberName}>k__BackingField");
+        if (backingField is not null)
+        {
+            EmitExpr(ma.Target, expected: null);
+            _il.Append(_il.Create(OpCodes.Ldfld, _module.ImportReference(backingField)));
+            return true;
+        }
+
+        // Try base class (inheritance)
+        if (td.BaseType is TypeReference baseRef)
+        {
+            TypeDefinition? baseTd = null;
+            _userTypes.TryGetValue(baseRef.Name, out baseTd);
+            if (baseTd is not null)
+            {
+                return TryEmitUserTypeMemberAccessOnExpr(
+                    new MemberAccessExprNode(ma.Span, ma.Target, ma.Member, ma.TypeArgs), baseTd);
+            }
+        }
+
+        return false;
+    }
+
+    private void EmitNewExpr(NewExprNode n)
+    {
+        var typeRef = ResolveType(_module, n.TypeRef, _imports, _userTypes, _genericContext, _diags, n.Span);
+
+        // User-defined class/struct?
+        if (typeRef is TypeDefinition td || (typeRef is TypeReference tr && _module.Types.Contains(typeRef as TypeDefinition)))
+        {
+            // Find the TypeDefinition in userTypes
+            var typeName = n.TypeRef switch
+            {
+                NamedTypeNode nt => nt.Name.ToString(),
+                _ => null
+            };
+            TypeDefinition? userTd = null;
+            if (typeName is not null)
+                _userTypes.TryGetValue(typeName, out userTd);
+
+            if (userTd is null && typeRef is TypeDefinition tdd)
+                userTd = tdd;
+
+            if (userTd is not null)
+            {
+                // Find the default .ctor
+                var ctor = userTd.Methods.FirstOrDefault(m => m.Name == ".ctor" && m.Parameters.Count == 0);
+                if (ctor is null)
+                {
+                    _diags.Add(new CodeGenDiagnostic(n.Span, "CG3100", CodeGenSeverity.Error,
+                        Msg.Diag("CG3100.ctor", userTd.Name)));
+                    _il.Append(_il.Create(OpCodes.Ldnull));
+                    return;
+                }
+
+                // newobj → push new instance
+                _il.Append(_il.Create(OpCodes.Newobj, _module.ImportReference(ctor)));
+
+                // For each named arg, call the property setter
+                foreach (var arg in n.Args)
+                {
+                    string? propName = null;
+                    ExprNode? valueExpr = null;
+
+                    if (arg is NamedArgNode na)
+                    {
+                        propName = na.Name.Text;
+                        valueExpr = na.Value;
+                    }
+                    else if (arg is PositionalArgNode pa)
+                    {
+                        // positional args on user types not supported in this path
+                        valueExpr = pa.Value;
+                    }
+
+                    if (propName is null || valueExpr is null) continue;
+
+                    // Walk inheritance chain to find setter
+                    MethodDefinition? setter = null;
+                    var searchForSetter = userTd;
+                    while (searchForSetter is not null && setter is null)
+                    {
+                        setter = searchForSetter.Methods.FirstOrDefault(m => m.Name == $"set_{propName}");
+                        if (setter is null)
+                        {
+                            var baseRef2 = searchForSetter.BaseType;
+                            searchForSetter = null;
+                            if (baseRef2 is not null) _userTypes.TryGetValue(baseRef2.Name, out searchForSetter);
+                        }
+                    }
+                    if (setter is null) continue;
+
+                    // dup the instance reference, push value, call setter
+                    _il.Append(_il.Create(OpCodes.Dup));
+                    EmitExpr(valueExpr, expected: setter.Parameters.Count > 0 ? setter.Parameters[0].ParameterType : null);
+                    _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(setter)));
+                }
+                return;
+            }
+        }
+
+        // Fallback: CLR type — find a matching constructor
+        var clrType = n.TypeRef switch
+        {
+            NamedTypeNode nt => TryResolveClrType(nt.Name.ToString(), _imports),
+            _ => null
+        };
+        if (clrType is not null)
+        {
+            var ctorArgs = n.Args.Select(a => a switch
+            {
+                PositionalArgNode pa => InferExprType(pa.Value),
+                NamedArgNode na => InferExprType(na.Value),
+                _ => _module.TypeSystem.Object
+            }).ToArray();
+
+            var ctor = clrType.GetConstructor(ctorArgs.Select(t =>
+                Type.GetType(t.FullName) ?? typeof(object)).ToArray());
+            if (ctor is null)
+                ctor = clrType.GetConstructors().FirstOrDefault();
+
+            if (ctor is not null)
+            {
+                foreach (var arg in n.Args)
+                {
+                    ExprNode? ve = arg switch
+                    {
+                        PositionalArgNode pa => pa.Value,
+                        NamedArgNode na => na.Value,
+                        _ => null
+                    };
+                    if (ve is not null) EmitExpr(ve, expected: null);
+                }
+                _il.Append(_il.Create(OpCodes.Newobj, _module.ImportReference(ctor)));
+                return;
+            }
+        }
+
+        _diags.Add(new CodeGenDiagnostic(n.Span, "CG3101", CodeGenSeverity.Error,
+            Msg.Diag("CG3101.newexpr", n.TypeRef)));
+        _il.Append(_il.Create(OpCodes.Ldnull));
     }
 
     private void EmitCall(CallExprNode call)
@@ -1377,7 +1645,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
             if (arg is PlaceholderArgNode)
             {
                 _diags.Add(new CodeGenDiagnostic(arg.Span, "CG3301", CodeGenSeverity.Error,
-                    "Placeholder '_' should be removed by lowering before codegen."));
+                    Msg.Diag("CG3301")));
                 _il.Append(_il.Create(OpCodes.Ldnull));
                 continue;
             }
@@ -1422,7 +1690,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
         if (opProps is null || opProps.Count == 0)
         {
             _diags.Add(new CodeGenDiagnostic(span, "CG5001", CodeGenSeverity.Warning,
-                $"No derivable op properties found for '{fnName}'. derivateof will return null."));
+                Msg.Diag("CG5001", fnName)));
             _il.Append(_il.Create(OpCodes.Ldnull));
             return;
         }
@@ -1508,7 +1776,7 @@ private void EmitAwaitUnary(UnaryExprNode u)
         var invoke = TryFindDelegateInvoke(delType);
         if (invoke is null)
         {
-            _diags.Add(new CodeGenDiagnostic(call.Span, "CG3302", CodeGenSeverity.Error, $"Cannot invoke non-callable value: {delType.FullName}"));
+            _diags.Add(new CodeGenDiagnostic(call.Span, "CG3302", CodeGenSeverity.Error, Msg.Diag("CG3302", delType.FullName)));
             return;
         }
 
@@ -1582,7 +1850,7 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
         if (resultType.MetadataType == MetadataType.Void)
         {
             _diags.Add(new CodeGenDiagnostic(te.Span, "CG3400", CodeGenSeverity.Error,
-                "TryCatchExprNode cannot be void; it must yield a value."));
+                Msg.Diag("CG3400")));
             _il.Append(_il.Create(OpCodes.Ldnull));
             return;
         }
@@ -1695,7 +1963,7 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
         var delClr = ResolveClrTypeFromTypeReference(delType);
         if (delClr is null)
         {
-            _diags.Add(new CodeGenDiagnostic(lam.Span, "CG3501", CodeGenSeverity.Error, $"Cannot resolve delegate CLR type: {delType.FullName}"));
+            _diags.Add(new CodeGenDiagnostic(lam.Span, "CG3501", CodeGenSeverity.Error, Msg.Diag("CG3501", delType.FullName)));
             _il.Append(_il.Create(OpCodes.Ldnull));
             return;
         }
@@ -1705,7 +1973,7 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
         if (invoke is null || ctor is null)
         {
             _diags.Add(new CodeGenDiagnostic(lam.Span, "CG3502", CodeGenSeverity.Error,
-                $"Delegate type '{delClr.FullName}' is missing Invoke method or constructor."));
+                Msg.Diag("CG3502", delClr.FullName ?? delClr.Name)));
             _il.Append(_il.Create(OpCodes.Ldnull));
             return;
         }
@@ -2095,7 +2363,7 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
         if (typeArgs is null)
         {
             _diags.Add(new CodeGenDiagnostic(call.Span, "CG5105", CodeGenSeverity.Warning,
-                $"Could not infer generic type arguments for '{mi.DeclaringType?.FullName}.{mi.Name}'; defaulting to object."));
+                Msg.Diag("CG5105", mi.DeclaringType?.FullName ?? "?", mi.Name)));
             typeArgs = Enumerable.Repeat(_module.TypeSystem.Object, genCount).ToList();
         }
         if (typeArgs.Count != genCount)
@@ -2175,13 +2443,21 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
 
     private MethodReference? ResolveUserTypeMethodOverload(TypeDefinition td, string name, IReadOnlyList<ArgumentNode> args)
     {
-        // Minimal overload resolution for user types: by name + arity.
-        var candidates = td.Methods.Where(m => m.Name == name && m.Parameters.Count == args.Count).ToArray();
-        if (candidates.Length == 0) return null;
-        if (candidates.Length == 1) return candidates[0];
-
-        var pub = candidates.FirstOrDefault(m => m.IsPublic);
-        return pub ?? candidates[0];
+        // Walk up the inheritance chain for method resolution
+        var search = td;
+        while (search is not null)
+        {
+            var candidates = search.Methods.Where(m => m.Name == name && m.Parameters.Count == args.Count).ToArray();
+            if (candidates.Length > 0)
+            {
+                var pub = candidates.FirstOrDefault(m => m.IsPublic);
+                return pub ?? candidates[0];
+            }
+            var baseRef = search.BaseType;
+            if (baseRef is null) break;
+            _userTypes.TryGetValue(baseRef.Name, out search);
+        }
+        return null;
     }
 
     // Improved overload selection for CLR methods (v2)
@@ -2518,7 +2794,7 @@ private static TypeReference ResolveNamedType(
 
         // User-defined generic types not yet supported (best-effort).
         diags.Add(new CodeGenDiagnostic(span, "CG1104", CodeGenSeverity.Warning,
-            $"Generic user-defined types are not fully supported yet; '{qn}<...>' will be treated as non-generic."));
+            Msg.Diag("CG1104", qn)));
         return udt;
     }
 
@@ -2527,7 +2803,7 @@ private static TypeReference ResolveNamedType(
     var clr = TryResolveClrType(qn, importedNamespaces, arity);
     if (clr is null)
     {
-        diags.Add(new CodeGenDiagnostic(span, "CG1001", CodeGenSeverity.Error, $"Unknown type '{qn}'"));
+        diags.Add(new CodeGenDiagnostic(span, "CG1001", CodeGenSeverity.Error, Msg.Diag("CG1001", qn)));
         return module.TypeSystem.Object;
     }
 
@@ -2702,7 +2978,7 @@ private static TypeReference ResolveDelegateType(
         }
 
         _diags.Add(new CodeGenDiagnostic(span, "CG4099", CodeGenSeverity.Warning,
-            $"No implicit coercion rule implemented from '{actual.FullName}' to '{expected.FullName}' in codegen v3."));
+            Msg.Diag("CG4099", actual.FullName, expected.FullName)));
     }
 
     private string FreshTempName(string prefix) => $"{prefix}{_tempId++}";

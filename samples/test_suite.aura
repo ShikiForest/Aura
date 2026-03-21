@@ -1,0 +1,487 @@
+// ============================================================
+// test_suite.aura — Aura コンパイラ機能テスト
+// ============================================================
+
+// ── Enum 定義 ────────────────────────────────────────────────
+pub enum Color {
+    Red = 0,
+    Green = 1,
+    Blue = 2
+}
+
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error
+}
+
+// ── クラス定義 ───────────────────────────────────────────────
+pub class Vec2 {
+    pub property x: f64
+    pub property y: f64
+
+    pub fn add(other: Vec2) -> Vec2 {
+        return new Vec2(x: x + other.x, y: y + other.y)
+    }
+
+    pub fn scale(factor: f64) -> Vec2 {
+        return new Vec2(x: x * factor, y: y * factor)
+    }
+
+    pub fn magnitude_sq() -> f64 {
+        return x * x + y * y
+    }
+
+    pub fn to_string() -> string {
+        return $"Vec2({x}, {y})"
+    }
+}
+
+pub class StringBuilder {
+    pub property buffer: string
+    pub property count: i32
+
+    pub fn append(s: string) -> void {
+        buffer = buffer + s
+        count = count + 1
+    }
+
+    pub fn build() -> string {
+        return buffer
+    }
+
+    pub fn clear() -> void {
+        buffer = ""
+        count = 0
+    }
+}
+
+// ── 継承テスト ───────────────────────────────────────────────
+pub class Shape {
+    pub property kind: string
+    pub property area: f64
+
+    pub fn describe() -> string {
+        return kind + " (area=" + area + ")"
+    }
+}
+
+pub class Circle : Shape {
+    pub property radius: f64
+
+    pub fn diameter() -> f64 {
+        return radius * 2.0
+    }
+}
+
+pub class Rectangle : Shape {
+    pub property width: f64
+    pub property height: f64
+}
+
+// ── テストヘルパー ───────────────────────────────────────────
+fn assert_eq_i32(label: string, actual: i32, expected: i32) -> void {
+    if actual == expected {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected " + expected + " got " + actual)
+    }
+}
+
+fn assert_eq_str(label: string, actual: string, expected: string) -> void {
+    if actual == expected {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected [" + expected + "] got [" + actual + "]")
+    }
+}
+
+fn assert_eq_bool(label: string, actual: bool, expected: bool) -> void {
+    if actual == expected {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected " + expected + " got " + actual)
+    }
+}
+
+fn assert_eq_f64(label: string, actual: f64, expected: f64) -> void {
+    // 浮動小数点比較は差分で
+    let diff = actual - expected
+    let ok = diff < 0.001 && diff > -0.001
+    if ok {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected " + expected + " got " + actual)
+    }
+}
+
+// ── 算術テスト関数 ───────────────────────────────────────────
+fn test_arithmetic() -> void {
+    Console.WriteLine("[1] 算術演算")
+
+    assert_eq_i32("2 + 3", 2 + 3, 5)
+    assert_eq_i32("10 - 7", 10 - 7, 3)
+    assert_eq_i32("6 * 8", 6 * 8, 48)
+    assert_eq_i32("15 / 4", 15 / 4, 3)
+    assert_eq_i32("17 % 5", 17 % 5, 2)
+
+    // 負数
+    assert_eq_i32("-3 + 5", -3 + 5, 2)
+    assert_eq_i32("0 - 1", 0 - 1, -1)
+
+    // 複合式
+    assert_eq_i32("(2+3)*4", (2 + 3) * 4, 20)
+    assert_eq_i32("2+3*4", 2 + 3 * 4, 14)
+
+    // f64
+    assert_eq_f64("1.5 + 2.5", 1.5 + 2.5, 4.0)
+    assert_eq_f64("3.0 * 2.0", 3.0 * 2.0, 6.0)
+}
+
+// ── 文字列テスト ─────────────────────────────────────────────
+fn test_strings() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[2] 文字列")
+
+    assert_eq_str("concat", "hello" + " " + "world", "hello world")
+    assert_eq_str("empty + str", "" + "abc", "abc")
+    assert_eq_str("str + empty", "abc" + "", "abc")
+
+    // 文字列補間
+    let x = 42
+    let name = "Aura"
+    assert_eq_str("interp basic", $"value={x}", "value=42")
+    assert_eq_str("interp expr", $"{x * 2}", "84")
+    assert_eq_str("interp multi", $"{name} v{x}", "Aura v42")
+
+    // 数値→文字列変換
+    assert_eq_str("int to str", "" + 123, "123")
+    assert_eq_str("neg to str", "" + -5, "-5")
+    assert_eq_str("bool to str", "" + true, "True")
+}
+
+// ── 制御フロー ───────────────────────────────────────────────
+fn test_control_flow() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[3] 制御フロー")
+
+    // if / else
+    let a = 10
+    let r1 = a > 5 ? "big" : "small"
+    assert_eq_str("ternary true", r1, "big")
+
+    let r2 = a < 5 ? "big" : "small"
+    assert_eq_str("ternary false", r2, "small")
+
+    // ネスト三項演算子
+    let score = 85
+    let grade = score >= 90 ? "A" :
+                score >= 80 ? "B" :
+                score >= 70 ? "C" : "F"
+    assert_eq_str("nested ternary", grade, "B")
+
+    // while ループ
+    var sum = 0
+    var i = 1
+    while i <= 100 {
+        sum = sum + i
+        i = i + 1
+    }
+    assert_eq_i32("sum 1..100", sum, 5050)
+
+    // ネスト while
+    var total = 0
+    var row = 0
+    while row < 3 {
+        var col = 0
+        while col < 4 {
+            total = total + 1
+            col = col + 1
+        }
+        row = row + 1
+    }
+    assert_eq_i32("nested while 3x4", total, 12)
+
+    // 早期 return
+    assert_eq_i32("early return", early_return_test(15), 1)
+    assert_eq_i32("early return 2", early_return_test(5), 0)
+}
+
+fn early_return_test(n: i32) -> i32 {
+    if n > 10 {
+        return 1
+    }
+    return 0
+}
+
+// ── 再帰テスト ───────────────────────────────────────────────
+fn fib(n: i32) -> i32 {
+    if n <= 0 {
+        return 0
+    }
+    if n == 1 {
+        return 1
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        return a
+    }
+    return gcd(b, a % b)
+}
+
+fn power(base: i32, exp: i32) -> i32 {
+    if exp == 0 {
+        return 1
+    }
+    return base * power(base, exp - 1)
+}
+
+fn test_recursion() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[4] 再帰")
+
+    assert_eq_i32("fib(0)", fib(0), 0)
+    assert_eq_i32("fib(1)", fib(1), 1)
+    assert_eq_i32("fib(10)", fib(10), 55)
+    assert_eq_i32("fib(15)", fib(15), 610)
+
+    assert_eq_i32("gcd(12,8)", gcd(12, 8), 4)
+    assert_eq_i32("gcd(100,75)", gcd(100, 75), 25)
+    assert_eq_i32("gcd(17,13)", gcd(17, 13), 1)
+
+    assert_eq_i32("2^10", power(2, 10), 1024)
+    assert_eq_i32("3^5", power(3, 5), 243)
+}
+
+// ── 論理演算テスト ───────────────────────────────────────────
+fn test_boolean() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[5] 論理演算")
+
+    assert_eq_bool("true && true", true && true, true)
+    assert_eq_bool("true && false", true && false, false)
+    assert_eq_bool("false && true", false && true, false)
+    assert_eq_bool("false && false", false && false, false)
+
+    assert_eq_bool("true || true", true || true, true)
+    assert_eq_bool("true || false", true || false, true)
+    assert_eq_bool("false || true", false || true, true)
+    assert_eq_bool("false || false", false || false, false)
+
+    assert_eq_bool("!true", !true, false)
+    assert_eq_bool("!false", !false, true)
+
+    // 複合論理
+    assert_eq_bool("(t&&f)||t", (true && false) || true, true)
+    assert_eq_bool("t&&(f||t)", true && (false || true), true)
+
+    // 比較
+    assert_eq_bool("3 < 5", 3 < 5, true)
+    assert_eq_bool("5 < 3", 5 < 3, false)
+    assert_eq_bool("3 <= 3", 3 <= 3, true)
+    assert_eq_bool("3 >= 4", 3 >= 4, false)
+    assert_eq_bool("5 == 5", 5 == 5, true)
+    assert_eq_bool("5 != 5", 5 != 5, false)
+    assert_eq_bool("5 != 6", 5 != 6, true)
+}
+
+// ── クラステスト ─────────────────────────────────────────────
+fn test_classes() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[6] クラス・インスタンス")
+
+    // Vec2
+    let v1 = new Vec2(x: 3.0, y: 4.0)
+    let v2 = new Vec2(x: 1.0, y: 2.0)
+    let v3 = v1.add(v2)
+    assert_eq_f64("vec add x", v3.x, 4.0)
+    assert_eq_f64("vec add y", v3.y, 6.0)
+    assert_eq_f64("magnitude_sq", v1.magnitude_sq(), 25.0)
+
+    let v4 = v2.scale(3.0)
+    assert_eq_f64("scale x", v4.x, 3.0)
+    assert_eq_f64("scale y", v4.y, 6.0)
+
+    assert_eq_str("vec to_string", v1.to_string(), "Vec2(3, 4)")
+
+    // StringBuilder
+    let sb = new StringBuilder(buffer: "", count: 0)
+    sb.append("Hello")
+    sb.append(", ")
+    sb.append("World!")
+    assert_eq_str("sb build", sb.build(), "Hello, World!")
+    assert_eq_i32("sb count", sb.count, 3)
+
+    sb.clear()
+    assert_eq_str("sb after clear", sb.build(), "")
+    assert_eq_i32("sb count after clear", sb.count, 0)
+}
+
+// ── 継承テスト ───────────────────────────────────────────────
+fn test_inheritance() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[7] 継承")
+
+    let c = new Circle(kind: "circle", area: 28.27, radius: 3.0)
+    assert_eq_str("circle kind", c.kind, "circle")
+    assert_eq_f64("circle area", c.area, 28.27)
+    assert_eq_f64("circle diameter", c.diameter(), 6.0)
+    assert_eq_str("circle describe", c.describe(), "circle (area=28.27)")
+
+    let r = new Rectangle(kind: "rect", area: 24.0, width: 6.0, height: 4.0)
+    assert_eq_str("rect describe", r.describe(), "rect (area=24)")
+    assert_eq_f64("rect width", r.width, 6.0)
+    assert_eq_f64("rect height", r.height, 4.0)
+}
+
+// ── try/catch テスト ─────────────────────────────────────────
+fn test_exceptions() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[8] try/catch")
+
+    // ゼロ除算
+    var caught = false
+    try {
+        let x = 10
+        let y = 0
+        let z = x / y
+        Console.WriteLine("z = " + z)
+    } catch (e: Exception) {
+        caught = true
+    }
+    assert_eq_bool("div by zero caught", caught, true)
+
+    // 正常パス (例外なし)
+    var normal = false
+    try {
+        let x = 10
+        let y = 2
+        let z = x / y
+        normal = true
+    } catch (e: Exception) {
+        normal = false
+    }
+    assert_eq_bool("no exception path", normal, true)
+}
+
+// ── 複合アルゴリズムテスト ───────────────────────────────────
+fn is_prime(n: i32) -> bool {
+    if n <= 1 {
+        return false
+    }
+    if n <= 3 {
+        return true
+    }
+    if n % 2 == 0 {
+        return false
+    }
+    var i = 3
+    while i * i <= n {
+        if n % i == 0 {
+            return false
+        }
+        i = i + 2
+    }
+    return true
+}
+
+fn collatz_steps(n: i32) -> i32 {
+    var current = n
+    var steps = 0
+    while current != 1 {
+        if current % 2 == 0 {
+            current = current / 2
+        } else {
+            current = current * 3 + 1
+        }
+        steps = steps + 1
+    }
+    return steps
+}
+
+fn test_algorithms() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[9] アルゴリズム")
+
+    // 素数判定
+    assert_eq_bool("is_prime(2)", is_prime(2), true)
+    assert_eq_bool("is_prime(7)", is_prime(7), true)
+    assert_eq_bool("is_prime(11)", is_prime(11), true)
+    assert_eq_bool("is_prime(4)", is_prime(4), false)
+    assert_eq_bool("is_prime(9)", is_prime(9), false)
+    assert_eq_bool("is_prime(1)", is_prime(1), false)
+    assert_eq_bool("is_prime(97)", is_prime(97), true)
+
+    // コラッツ予想
+    assert_eq_i32("collatz(1)", collatz_steps(1), 0)
+    assert_eq_i32("collatz(6)", collatz_steps(6), 8)
+    assert_eq_i32("collatz(27)", collatz_steps(27), 111)
+
+    // 素数カウント (1-100)
+    var prime_count = 0
+    var n = 2
+    while n <= 100 {
+        if is_prime(n) {
+            prime_count = prime_count + 1
+        }
+        n = n + 1
+    }
+    assert_eq_i32("primes in 1..100", prime_count, 25)
+}
+
+// ── 変数スコープ ─────────────────────────────────────────────
+fn test_scoping() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[10] スコープ・変数")
+
+    // let は不変
+    let x = 10
+    assert_eq_i32("let immutable", x, 10)
+
+    // var は可変
+    var y = 20
+    y = y + 5
+    assert_eq_i32("var mutable", y, 25)
+
+    // 同名のシャドーイング
+    let z = 100
+    let z2 = z + 1
+    assert_eq_i32("shadow", z2, 101)
+
+    // while 内の変数
+    var acc = ""
+    var i = 0
+    while i < 5 {
+        let ch = "" + i
+        acc = acc + ch
+        i = i + 1
+    }
+    assert_eq_str("loop var", acc, "01234")
+}
+
+// ── エントリーポイント ───────────────────────────────────────
+pub fn main() {
+    Console.WriteLine("========================================")
+    Console.WriteLine("  Aura Compiler Test Suite")
+    Console.WriteLine("========================================")
+
+    test_arithmetic()
+    test_strings()
+    test_control_flow()
+    test_recursion()
+    test_boolean()
+    test_classes()
+    test_inheritance()
+    test_exceptions()
+    test_algorithms()
+    test_scoping()
+
+    Console.WriteLine("")
+    Console.WriteLine("========================================")
+    Console.WriteLine("  全テスト完了")
+    Console.WriteLine("========================================")
+}

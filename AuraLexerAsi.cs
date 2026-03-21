@@ -20,6 +20,22 @@ public partial class AuraLexer
 
         var token = base.NextToken();
 
+        // ASI: insert SEMI before } when on the same line (single-line blocks)
+        // e.g.  if cond { return x }  →  if cond { return x; }
+        if (token.Type == RBRACE && !_inInterpExpr
+            && _lastNonHiddenToken is not null
+            && IsAsiTrigger(_lastNonHiddenToken.Type))
+        {
+            var semi = new CommonToken(SEMI, ";")
+            {
+                Line = _lastNonHiddenToken.Line,
+                Column = _lastNonHiddenToken.Column + (_lastNonHiddenToken.Text?.Length ?? 0),
+            };
+            _lastNonHiddenToken = semi;
+            _pendingTokens.Enqueue(token); // queue the } for later
+            return semi;
+        }
+
         // ASI: insert SEMI before NL when previous non-hidden token is a trigger
         // Skip ASI inside interpolation expressions to avoid breaking $"...{expr}..."
         if (token.Type == NL && !_inInterpExpr

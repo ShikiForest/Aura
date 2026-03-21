@@ -1,0 +1,262 @@
+// ============================================================
+// experiment.aura — Aura 言語機能 実験用コード
+// ============================================================
+
+// ── Enum ─────────────────────────────────────────────────────
+pub enum Direction {
+    North,
+    South,
+    East,
+    West
+}
+
+pub enum Season {
+    Spring = 0,
+    Summer = 1,
+    Autumn = 2,
+    Winter = 3
+}
+
+// ── Struct (implemented as class) ────────────────────────────
+pub class Point {
+    pub property x: f64
+    pub property y: f64
+
+    pub fn distance_to(other: Point) -> f64 {
+        let dx = x - other.x
+        let dy = y - other.y
+        return dx * dx + dy * dy
+    }
+
+    pub fn to_string() -> string {
+        return "(" + x + ", " + y + ")"
+    }
+}
+
+// ── Class ────────────────────────────────────────────────────
+pub class Counter {
+    pub property value: i32
+    pub property label: string
+
+    pub fn increment() -> void {
+        value = value + 1
+    }
+
+    pub fn increment_by(n: i32) -> void {
+        value = value + n
+    }
+
+    pub fn reset() -> void {
+        value = 0
+    }
+
+    pub fn is_zero() -> bool {
+        return value == 0
+    }
+
+    pub fn describe() -> string {
+        return label + ": " + value
+    }
+}
+
+// ── Simple inheritance / base class ──────────────────────────
+pub class Animal {
+    pub property name: string
+    pub property sound: string
+
+    pub fn speak() -> string {
+        return name + " says " + sound
+    }
+}
+
+pub class Dog : Animal {
+    pub property breed: string
+
+    pub fn info() -> string {
+        return name + " (" + breed + ")"
+    }
+}
+
+// ── Top-level utility functions ───────────────────────────────
+
+fn max(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+fn min(a: i32, b: i32) -> i32 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+fn clamp(v: i32, lo: i32, hi: i32) -> i32 {
+    return max(lo, min(v, hi))
+}
+
+fn abs_val(n: i32) -> i32 {
+    if n < 0 {
+        return -n
+    }
+    return n
+}
+
+fn factorial(n: i32) -> i32 {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+fn sum_range(from: i32, to: i32) -> i32 {
+    var total = 0
+    var i = from
+    while i <= to {
+        total = total + i
+        i = i + 1
+    }
+    return total
+}
+
+fn fizzbuzz(n: i32) -> string {
+    let fizz = n % 3 == 0
+    let buzz  = n % 5 == 0
+    if fizz && buzz {
+        return "FizzBuzz"
+    }
+    if fizz {
+        return "Fizz"
+    }
+    if buzz {
+        return "Buzz"
+    }
+    return "" + n
+}
+
+fn string_repeat(s: string, times: i32) -> string {
+    var result = ""
+    var i = 0
+    while i < times {
+        result = result + s
+        i = i + 1
+    }
+    return result
+}
+
+// ── Entry point ───────────────────────────────────────────────
+pub fn main() {
+    // ── 基本演算 ──────────────────────────────────────────────
+    Console.WriteLine("=== 基本演算 ===")
+    let a = 10
+    let b = 3
+    Console.WriteLine("a = " + a + ", b = " + b)
+    Console.WriteLine("a + b = " + (a + b))
+    Console.WriteLine("a - b = " + (a - b))
+    Console.WriteLine("a * b = " + (a * b))
+    Console.WriteLine("a / b = " + (a / b))
+    Console.WriteLine("a % b = " + (a % b))
+
+    // ── 文字列操作 ────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== 文字列 ===")
+    let greeting = "Hello"
+    let target   = "Aura"
+    let message  = greeting + ", " + target + "!"
+    Console.WriteLine(message)
+    Console.WriteLine("repeat: " + string_repeat("ab", 4))
+    Console.WriteLine($"interpolated: {a} x {b} = {a * b}")
+
+    // ── 制御フロー ────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== 制御フロー ===")
+
+    // if / else
+    let score = 75
+    let grade = score >= 90 ? "A" :
+                score >= 70 ? "B" :
+                score >= 50 ? "C" : "F"
+    Console.WriteLine("score=" + score + " grade=" + grade)
+
+    // while ループ
+    var count = 0
+    while count < 5 {
+        count = count + 1
+    }
+    Console.WriteLine("count after loop: " + count)
+
+    // ── ユーティリティ関数 ────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== 関数 ===")
+    Console.WriteLine("max(7, 3)    = " + max(7, 3))
+    Console.WriteLine("min(7, 3)    = " + min(7, 3))
+    Console.WriteLine("clamp(15,0,10)= " + clamp(15, 0, 10))
+    Console.WriteLine("abs_val(-42) = " + abs_val(-42))
+    Console.WriteLine("factorial(6) = " + factorial(6))
+    Console.WriteLine("sum 1..10    = " + sum_range(1, 10))
+
+    // ── FizzBuzz ──────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== FizzBuzz (1-20) ===")
+    var i = 1
+    while i <= 20 {
+        Console.WriteLine(fizzbuzz(i))
+        i = i + 1
+    }
+
+    // ── クラス・インスタンス ───────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== Counter クラス ===")
+    let c = new Counter(value: 0, label: "hits")
+    c.increment()
+    c.increment()
+    c.increment_by(5)
+    Console.WriteLine(c.describe())
+    Console.WriteLine("is_zero: " + c.is_zero())
+    c.reset()
+    Console.WriteLine("after reset: " + c.describe())
+    Console.WriteLine("is_zero: " + c.is_zero())
+
+    // ── 継承 ──────────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== Animal / Dog ===")
+    let dog = new Dog(name: "Rex", sound: "Woof", breed: "Shiba Inu")
+    Console.WriteLine(dog.speak())
+    Console.WriteLine(dog.info())
+
+    // ── Struct ────────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== Point struct ===")
+    let p1 = new Point(x: 0.0, y: 0.0)
+    let p2 = new Point(x: 3.0, y: 4.0)
+    Console.WriteLine("p1 = " + p1.to_string())
+    Console.WriteLine("p2 = " + p2.to_string())
+    Console.WriteLine("distance² = " + p1.distance_to(p2))
+
+    // ── 論理演算 ──────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== 論理演算 ===")
+    let t = true
+    let f = false
+    Console.WriteLine("t && f = " + (t && f))
+    Console.WriteLine("t || f = " + (t || f))
+    Console.WriteLine("!t     = " + !t)
+    Console.WriteLine("!f     = " + !f)
+
+    // ── try/catch ─────────────────────────────────────────────
+    Console.WriteLine("")
+    Console.WriteLine("=== try/catch ===")
+    try {
+        let x = 10
+        let y = 0
+        let z = x / y
+        Console.WriteLine("z = " + z)
+    } catch (e: Exception) {
+        Console.WriteLine("caught: " + e.Message)
+    }
+
+    Console.WriteLine("")
+    Console.WriteLine("=== 完了 ===")
+}

@@ -127,7 +127,7 @@ enumDecl
     ;
 
 enumBody
-    : LBRACE enumMember (COMMA enumMember)* COMMA? RBRACE
+    : LBRACE enumMember (COMMA enumMember)* COMMA? SEMI? RBRACE
     ;
 
 enumMember
@@ -434,7 +434,7 @@ switchExpression
     ;
 
 switchExpressionBlock
-    : LBRACE switchExpressionArm (COMMA switchExpressionArm)* COMMA? RBRACE
+    : LBRACE switchExpressionArm (COMMA switchExpressionArm)* COMMA? SEMI? RBRACE
     ;
 
 switchExpressionArm
