@@ -96,10 +96,10 @@
       "patterns": [
         {
           "name": "meta.attribute.aura",
-          "begin": "\\[",
-          "end": "\\]",
-          "beginCaptures": { "0": { "name": "punctuation.definition.attribute.begin.aura" } },
-          "endCaptures": { "0": { "name": "punctuation.definition.attribute.end.aura" } },
+          "begin": "^\\s*(\\[)",
+          "end": "(\\])",
+          "beginCaptures": { "1": { "name": "punctuation.definition.attribute.begin.aura" } },
+          "endCaptures": { "1": { "name": "punctuation.definition.attribute.end.aura" } },
           "patterns": [
             {
               "name": "entity.other.attribute-name.aura",

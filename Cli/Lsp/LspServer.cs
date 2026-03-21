@@ -63,9 +63,10 @@ internal sealed class LspServer
                 HandleDefinition(id, @params);
                 break;
             default:
-                // Unknown method — respond with null for requests, ignore notifications
+                // Unknown method — return MethodNotFound for requests, ignore notifications
                 if (id is not null)
-                    JsonRpc.SendResponse(_output, id, null);
+                    JsonRpc.SendError(_output, id, JsonRpc.MethodNotFound,
+                        $"Method not found: {method}");
                 break;
         }
     }
@@ -283,40 +284,52 @@ internal sealed class LspServer
         if (!_documents.TryGetValue(uri, out var state)) return;
 
         var diagnostics = new JsonArray();
+        CompilationUnitNode? ast = null;
+        IReadOnlyList<Diagnostic>? parseDiags = null;
 
-        // Parse
-        var parseResult = AuraFrontEnd.ParseCompilationUnit(state.Text);
-
-        foreach (var d in parseResult.Diagnostics)
+        try
         {
-            diagnostics.Add(LspTypes.Diagnostic(
-                d.Span.Start.Line - 1, d.Span.Start.Column,
-                d.Span.End.Line - 1, d.Span.End.Column,
-                LspTypes.SeverityError, d.Message));
-        }
+            // Parse
+            var parseResult = AuraFrontEnd.ParseCompilationUnit(state.Text);
+            parseDiags = parseResult.Diagnostics;
 
-        CompilationUnitNode? ast = parseResult.Ast;
-
-        // Semantic analysis (only if parse succeeded)
-        if (ast is not null)
-        {
-            var semResult = SemanticFrontEnd.Check(ast);
-            foreach (var d in semResult.Diagnostics)
+            foreach (var d in parseResult.Diagnostics)
             {
-                int severity = d.Severity switch
-                {
-                    DiagnosticSeverity.Error => LspTypes.SeverityError,
-                    DiagnosticSeverity.Warning => LspTypes.SeverityWarning,
-                    _ => LspTypes.SeverityInformation
-                };
                 diagnostics.Add(LspTypes.Diagnostic(
                     d.Span.Start.Line - 1, d.Span.Start.Column,
                     d.Span.End.Line - 1, d.Span.End.Column,
-                    severity, d.Message, d.Code));
+                    LspTypes.SeverityError, d.Message));
+            }
+
+            ast = parseResult.Ast;
+
+            // Semantic analysis (only if parse succeeded)
+            if (ast is not null)
+            {
+                var semResult = SemanticFrontEnd.Check(ast);
+                foreach (var d in semResult.Diagnostics)
+                {
+                    int severity = d.Severity switch
+                    {
+                        DiagnosticSeverity.Error => LspTypes.SeverityError,
+                        DiagnosticSeverity.Warning => LspTypes.SeverityWarning,
+                        _ => LspTypes.SeverityInformation
+                    };
+                    diagnostics.Add(LspTypes.Diagnostic(
+                        d.Span.Start.Line - 1, d.Span.Start.Column,
+                        d.Span.End.Line - 1, d.Span.End.Column,
+                        severity, d.Message, d.Code));
+                }
             }
         }
+        catch (Exception ex)
+        {
+            // Report internal error as a diagnostic so the user sees it
+            diagnostics.Add(LspTypes.Diagnostic(0, 0, 0, 0,
+                LspTypes.SeverityWarning, $"[aura-lsp] Analysis error: {ex.Message}"));
+        }
 
-        _documents[uri] = new DocumentState(state.Text, ast, parseResult.Diagnostics);
+        _documents[uri] = new DocumentState(state.Text, ast, parseDiags);
         PublishDiagnostics(uri, diagnostics);
     }
 
@@ -338,27 +351,29 @@ internal sealed class LspServer
         foreach (var item in ast.Items)
         {
             if (item is not SyntaxNode node) continue;
-            if (SpanContains(node.Span, line, col))
+            if (!SpanContains(node.Span, line, col)) continue;
+
+            // Check nested members for more specific match
+            IEnumerable<object>? members = node switch
             {
-                // Check nested members for more specific match
-                if (node is ClassDeclNode cls)
+                ClassDeclNode cls => cls.Members,
+                StructDeclNode st => st.Members,
+                TraitDeclNode tr => tr.Members,
+                EnumDeclNode en => en.Members,
+                WindowDeclNode wd => wd.Members,
+                _ => null
+            };
+
+            if (members is not null)
+            {
+                foreach (var m in members)
                 {
-                    foreach (var m in cls.Members)
-                    {
-                        if (m is SyntaxNode mn && SpanContains(mn.Span, line, col))
-                            return mn;
-                    }
+                    if (m is SyntaxNode mn && SpanContains(mn.Span, line, col))
+                        return mn;
                 }
-                else if (node is StructDeclNode st)
-                {
-                    foreach (var m in st.Members)
-                    {
-                        if (m is SyntaxNode mn && SpanContains(mn.Span, line, col))
-                            return mn;
-                    }
-                }
-                return node;
             }
+
+            return node;
         }
         return null;
     }

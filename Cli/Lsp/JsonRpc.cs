@@ -70,6 +70,25 @@ internal static class JsonRpc
         WriteMessage(output, msg);
     }
 
+    /// <summary>Sends a JSON-RPC error response.</summary>
+    public static void SendError(Stream output, JsonNode? id, int code, string message)
+    {
+        var msg = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["id"] = id?.DeepClone(),
+            ["error"] = new JsonObject
+            {
+                ["code"] = code,
+                ["message"] = message
+            }
+        };
+        WriteMessage(output, msg);
+    }
+
+    // Standard JSON-RPC error codes
+    public const int MethodNotFound = -32601;
+
     /// <summary>Sends a JSON-RPC notification (no id).</summary>
     public static void SendNotification(Stream output, string method, JsonNode? @params)
     {
