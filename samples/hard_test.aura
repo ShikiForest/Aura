@@ -1,0 +1,866 @@
+// ============================================================
+// hard_test.aura — Aura コンパイラ ハードテスト
+// ソートアルゴリズム・データ構造・グラフ探索 (DFS/BFS)
+// ============================================================
+// 制約: 配列なし → 連結リストベースで全実装
+//        obj.prop = val 不可 → setter メソッド使用
+//        get/set はキーワード → メソッド名に使用不可
+
+// ════════════════════════════════════════════════════════════
+// 1. データ構造
+// ════════════════════════════════════════════════════════════
+
+// ── 整数ノード (連結リスト基本要素) ────────────────────────
+pub class IntNode {
+    pub property val: i32
+    property next: IntNode
+
+    pub fn set_val(v: i32) -> void {
+        val = v
+    }
+
+    pub fn set_next(n: IntNode) -> void {
+        next = n
+    }
+
+    pub fn get_next() -> IntNode {
+        return next
+    }
+}
+
+// ── 整数連結リスト ─────────────────────────────────────────
+pub class IntList {
+    property head: IntNode
+    pub property size: i32
+
+    pub fn get_head() -> IntNode {
+        return head
+    }
+
+    pub fn set_head(h: IntNode) -> void {
+        head = h
+    }
+
+    pub fn set_size(s: i32) -> void {
+        size = s
+    }
+
+    pub fn push_front(v: i32) -> void {
+        let node = new IntNode(val: v, next: head)
+        head = node
+        size = size + 1
+    }
+
+    pub fn push_back(v: i32) -> void {
+        let node = new IntNode(val: v, next: null)
+        if head == null {
+            head = node
+        } else {
+            var cur = head
+            var nn = cur.get_next()
+            while nn != null {
+                cur = nn
+                nn = cur.get_next()
+            }
+            cur.set_next(node)
+        }
+        size = size + 1
+    }
+
+    pub fn to_string() -> string {
+        var result = "["
+        var cur = head
+        var first = true
+        while cur != null {
+            if first {
+                first = false
+            } else {
+                result = result + ", "
+            }
+            result = result + cur.val
+            cur = cur.get_next()
+        }
+        return result + "]"
+    }
+
+    pub fn clone() -> IntList {
+        let copy = new IntList(head: null, size: 0)
+        var cur = head
+        while cur != null {
+            copy.push_back(cur.val)
+            cur = cur.get_next()
+        }
+        return copy
+    }
+
+    pub fn equals(other: IntList) -> bool {
+        var a = head
+        var b = other.get_head()
+        while a != null && b != null {
+            if a.val != b.val {
+                return false
+            }
+            a = a.get_next()
+            b = b.get_next()
+        }
+        return a == null && b == null
+    }
+}
+
+// ── スタック (LIFO) ────────────────────────────────────────
+pub class IntStack {
+    property top: IntNode
+    pub property count: i32
+
+    pub fn push(v: i32) -> void {
+        let node = new IntNode(val: v, next: top)
+        top = node
+        count = count + 1
+    }
+
+    pub fn pop() -> i32 {
+        let v = top.val
+        top = top.get_next()
+        count = count - 1
+        return v
+    }
+
+    pub fn peek() -> i32 {
+        return top.val
+    }
+
+    pub fn is_empty() -> bool {
+        return top == null
+    }
+}
+
+// ── キュー (FIFO) ──────────────────────────────────────────
+pub class IntQueue {
+    property front: IntNode
+    property back: IntNode
+    pub property count: i32
+
+    pub fn enqueue(v: i32) -> void {
+        let node = new IntNode(val: v, next: null)
+        if back == null {
+            front = node
+            back = node
+        } else {
+            back.set_next(node)
+            back = node
+        }
+        count = count + 1
+    }
+
+    pub fn dequeue() -> i32 {
+        let v = front.val
+        front = front.get_next()
+        if front == null {
+            back = null
+        }
+        count = count - 1
+        return v
+    }
+
+    pub fn is_empty() -> bool {
+        return front == null
+    }
+}
+
+// ── Bool配列代替 (visited 管理用) ──────────────────────────
+pub class BoolEntry {
+    pub property key: i32
+    pub property visited: bool
+    property next: BoolEntry
+
+    pub fn set_visited(v: bool) -> void {
+        visited = v
+    }
+
+    pub fn set_next(n: BoolEntry) -> void {
+        next = n
+    }
+
+    pub fn get_next() -> BoolEntry {
+        return next
+    }
+}
+
+pub class BoolMap {
+    property head: BoolEntry
+
+    pub fn init_range(n: i32) -> void {
+        var i = n - 1
+        while i >= 0 {
+            let entry = new BoolEntry(key: i, visited: false, next: head)
+            head = entry
+            i = i - 1
+        }
+    }
+
+    pub fn lookup(k: i32) -> bool {
+        var cur = head
+        while cur != null {
+            if cur.key == k {
+                return cur.visited
+            }
+            cur = cur.get_next()
+        }
+        return false
+    }
+
+    pub fn mark(k: i32, v: bool) -> void {
+        var cur = head
+        while cur != null {
+            if cur.key == k {
+                cur.set_visited(v)
+                return
+            }
+            cur = cur.get_next()
+        }
+    }
+}
+
+// ════════════════════════════════════════════════════════════
+// 2. ソートアルゴリズム
+// ════════════════════════════════════════════════════════════
+
+// ── バブルソート ────────────────────────────────────────────
+fn bubble_sort(list: IntList) -> void {
+    if list.size <= 1 {
+        return
+    }
+    var swapped = true
+    while swapped {
+        swapped = false
+        var cur = list.get_head()
+        var nn = cur.get_next()
+        while nn != null {
+            if cur.val > nn.val {
+                let tmp = cur.val
+                cur.set_val(nn.val)
+                nn.set_val(tmp)
+                swapped = true
+            }
+            cur = nn
+            nn = cur.get_next()
+        }
+    }
+}
+
+// ── 選択ソート ─────────────────────────────────────────────
+fn selection_sort(list: IntList) -> void {
+    if list.size <= 1 {
+        return
+    }
+    var cur = list.get_head()
+    while cur != null {
+        var min_node = cur
+        var scan = cur.get_next()
+        while scan != null {
+            if scan.val < min_node.val {
+                min_node = scan
+            }
+            scan = scan.get_next()
+        }
+        if min_node.val != cur.val {
+            let tmp = cur.val
+            cur.set_val(min_node.val)
+            min_node.set_val(tmp)
+        }
+        cur = cur.get_next()
+    }
+}
+
+// ── マージソート (新しいリストを返す) ──────────────────────
+fn merge_sort(list: IntList) -> IntList {
+    if list.size <= 1 {
+        return list.clone()
+    }
+
+    let left = new IntList(head: null, size: 0)
+    let right = new IntList(head: null, size: 0)
+    var cur = list.get_head()
+    var idx = 0
+    let mid = list.size / 2
+    while cur != null {
+        if idx < mid {
+            left.push_back(cur.val)
+        } else {
+            right.push_back(cur.val)
+        }
+        cur = cur.get_next()
+        idx = idx + 1
+    }
+
+    let sorted_left = merge_sort(left)
+    let sorted_right = merge_sort(right)
+    return merge_lists(sorted_left, sorted_right)
+}
+
+fn merge_lists(a: IntList, b: IntList) -> IntList {
+    let result = new IntList(head: null, size: 0)
+    var pa = a.get_head()
+    var pb = b.get_head()
+    while pa != null && pb != null {
+        if pa.val <= pb.val {
+            result.push_back(pa.val)
+            pa = pa.get_next()
+        } else {
+            result.push_back(pb.val)
+            pb = pb.get_next()
+        }
+    }
+    while pa != null {
+        result.push_back(pa.val)
+        pa = pa.get_next()
+    }
+    while pb != null {
+        result.push_back(pb.val)
+        pb = pb.get_next()
+    }
+    return result
+}
+
+// ════════════════════════════════════════════════════════════
+// 3. グラフ (隣接リスト)
+// ════════════════════════════════════════════════════════════
+
+pub class EdgeNode {
+    pub property to: i32
+    property next: EdgeNode
+
+    pub fn get_next() -> EdgeNode {
+        return next
+    }
+
+    pub fn set_next(n: EdgeNode) -> void {
+        next = n
+    }
+}
+
+pub class AdjEntry {
+    pub property node_id: i32
+    property edges: EdgeNode
+    property next: AdjEntry
+
+    pub fn get_edges() -> EdgeNode {
+        return edges
+    }
+
+    pub fn set_edges(e: EdgeNode) -> void {
+        edges = e
+    }
+
+    pub fn get_next() -> AdjEntry {
+        return next
+    }
+
+    pub fn set_next(n: AdjEntry) -> void {
+        next = n
+    }
+}
+
+pub class Graph {
+    property adj: AdjEntry
+    pub property node_count: i32
+
+    pub fn init(n: i32) -> void {
+        node_count = n
+        var i = n - 1
+        while i >= 0 {
+            let entry = new AdjEntry(node_id: i, edges: null, next: adj)
+            adj = entry
+            i = i - 1
+        }
+    }
+
+    pub fn add_edge(from_node: i32, to_node: i32) -> void {
+        var cur = adj
+        while cur != null {
+            if cur.node_id == from_node {
+                let edge = new EdgeNode(to: to_node, next: cur.get_edges())
+                cur.set_edges(edge)
+                return
+            }
+            cur = cur.get_next()
+        }
+    }
+
+    pub fn find_edges(node_id: i32) -> EdgeNode {
+        var cur = adj
+        while cur != null {
+            if cur.node_id == node_id {
+                return cur.get_edges()
+            }
+            cur = cur.get_next()
+        }
+        return null
+    }
+}
+
+// ── DFS (スタック使用) ─────────────────────────────────────
+fn run_dfs(g: Graph, start: i32) -> string {
+    let visited = new BoolMap(head: null)
+    visited.init_range(g.node_count)
+    let stack = new IntStack(top: null, count: 0)
+    stack.push(start)
+    var result = ""
+    var first = true
+
+    while stack.is_empty() == false {
+        let node = stack.pop()
+        if visited.lookup(node) == false {
+            visited.mark(node, true)
+            if first {
+                first = false
+            } else {
+                result = result + " "
+            }
+            result = result + node
+
+            // 隣接ノードを収集してスタックに追加
+            let neighbors = new IntList(head: null, size: 0)
+            var edge = g.find_edges(node)
+            while edge != null {
+                neighbors.push_front(edge.to)
+                edge = edge.get_next()
+            }
+            var n_cur = neighbors.get_head()
+            while n_cur != null {
+                if visited.lookup(n_cur.val) == false {
+                    stack.push(n_cur.val)
+                }
+                n_cur = n_cur.get_next()
+            }
+        }
+    }
+    return result
+}
+
+// ── BFS (キュー使用) ───────────────────────────────────────
+fn run_bfs(g: Graph, start: i32) -> string {
+    let visited = new BoolMap(head: null)
+    visited.init_range(g.node_count)
+    let queue = new IntQueue(front: null, back: null, count: 0)
+    queue.enqueue(start)
+    visited.mark(start, true)
+    var result = ""
+    var first = true
+
+    while queue.is_empty() == false {
+        let node = queue.dequeue()
+        if first {
+            first = false
+        } else {
+            result = result + " "
+        }
+        result = result + node
+
+        let neighbors = new IntList(head: null, size: 0)
+        var edge = g.find_edges(node)
+        while edge != null {
+            neighbors.push_front(edge.to)
+            edge = edge.get_next()
+        }
+        var n_cur = neighbors.get_head()
+        while n_cur != null {
+            if visited.lookup(n_cur.val) == false {
+                visited.mark(n_cur.val, true)
+                queue.enqueue(n_cur.val)
+            }
+            n_cur = n_cur.get_next()
+        }
+    }
+    return result
+}
+
+// ════════════════════════════════════════════════════════════
+// 4. テストヘルパー
+// ════════════════════════════════════════════════════════════
+
+fn assert_list(label: string, actual: IntList, expected: IntList) -> void {
+    if actual.equals(expected) {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected " + expected.to_string() + " got " + actual.to_string())
+    }
+}
+
+fn assert_str(label: string, actual: string, expected: string) -> void {
+    if actual == expected {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected [" + expected + "] got [" + actual + "]")
+    }
+}
+
+fn assert_int(label: string, actual: i32, expected: i32) -> void {
+    if actual == expected {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected " + expected + " got " + actual)
+    }
+}
+
+fn assert_bool(label: string, actual: bool, expected: bool) -> void {
+    if actual == expected {
+        Console.WriteLine("  PASS: " + label)
+    } else {
+        Console.WriteLine("  FAIL: " + label + " — expected " + expected + " got " + actual)
+    }
+}
+
+// ── リスト作成ヘルパー ─────────────────────────────────────
+fn make_list_9() -> IntList {
+    let list = new IntList(head: null, size: 0)
+    list.push_back(5)
+    list.push_back(3)
+    list.push_back(8)
+    list.push_back(1)
+    list.push_back(9)
+    list.push_back(2)
+    list.push_back(7)
+    list.push_back(4)
+    list.push_back(6)
+    return list
+}
+
+fn make_sorted_9() -> IntList {
+    let list = new IntList(head: null, size: 0)
+    list.push_back(1)
+    list.push_back(2)
+    list.push_back(3)
+    list.push_back(4)
+    list.push_back(5)
+    list.push_back(6)
+    list.push_back(7)
+    list.push_back(8)
+    list.push_back(9)
+    return list
+}
+
+// ════════════════════════════════════════════════════════════
+// 5. テスト実行
+// ════════════════════════════════════════════════════════════
+
+fn test_data_structures() -> void {
+    Console.WriteLine("[1] データ構造 — IntList")
+
+    let list = new IntList(head: null, size: 0)
+    list.push_back(10)
+    list.push_back(20)
+    list.push_back(30)
+    assert_str("list to_string", list.to_string(), "[10, 20, 30]")
+    assert_int("list size", list.size, 3)
+
+    list.push_front(0)
+    assert_str("push_front", list.to_string(), "[0, 10, 20, 30]")
+    assert_int("size after push_front", list.size, 4)
+
+    let cloned = list.clone()
+    assert_bool("clone equals", cloned.equals(list), true)
+    assert_str("clone to_string", cloned.to_string(), "[0, 10, 20, 30]")
+}
+
+fn test_stack() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[2] データ構造 — IntStack")
+
+    let stack = new IntStack(top: null, count: 0)
+    assert_bool("stack empty", stack.is_empty(), true)
+    stack.push(1)
+    stack.push(2)
+    stack.push(3)
+    assert_int("stack count", stack.count, 3)
+    assert_int("stack peek", stack.peek(), 3)
+    assert_int("pop 3", stack.pop(), 3)
+    assert_int("pop 2", stack.pop(), 2)
+    assert_int("pop 1", stack.pop(), 1)
+    assert_bool("stack empty after pops", stack.is_empty(), true)
+}
+
+fn test_queue() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[3] データ構造 — IntQueue")
+
+    let queue = new IntQueue(front: null, back: null, count: 0)
+    assert_bool("queue empty", queue.is_empty(), true)
+    queue.enqueue(10)
+    queue.enqueue(20)
+    queue.enqueue(30)
+    assert_int("queue count", queue.count, 3)
+    assert_int("dequeue 1", queue.dequeue(), 10)
+    assert_int("dequeue 2", queue.dequeue(), 20)
+    assert_int("dequeue 3", queue.dequeue(), 30)
+    assert_bool("queue empty after dequeues", queue.is_empty(), true)
+
+    // interleave
+    queue.enqueue(1)
+    queue.enqueue(2)
+    assert_int("interleave deq 1", queue.dequeue(), 1)
+    queue.enqueue(3)
+    assert_int("interleave deq 2", queue.dequeue(), 2)
+    assert_int("interleave deq 3", queue.dequeue(), 3)
+    assert_bool("queue empty final", queue.is_empty(), true)
+}
+
+fn test_bubble_sort() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[4] バブルソート")
+
+    let list = make_list_9()
+    let expected = make_sorted_9()
+    Console.WriteLine("  input:  " + list.to_string())
+    bubble_sort(list)
+    Console.WriteLine("  output: " + list.to_string())
+    assert_list("bubble sort 9", list, expected)
+
+    // 既にソート済み
+    let sorted = make_sorted_9()
+    bubble_sort(sorted)
+    assert_list("bubble already sorted", sorted, expected)
+
+    // 逆順
+    let rev = new IntList(head: null, size: 0)
+    rev.push_back(5)
+    rev.push_back(4)
+    rev.push_back(3)
+    rev.push_back(2)
+    rev.push_back(1)
+    bubble_sort(rev)
+    let rev_exp = new IntList(head: null, size: 0)
+    rev_exp.push_back(1)
+    rev_exp.push_back(2)
+    rev_exp.push_back(3)
+    rev_exp.push_back(4)
+    rev_exp.push_back(5)
+    assert_list("bubble reverse", rev, rev_exp)
+
+    // 単一要素
+    let single = new IntList(head: null, size: 0)
+    single.push_back(42)
+    bubble_sort(single)
+    assert_str("bubble single", single.to_string(), "[42]")
+}
+
+fn test_selection_sort() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[5] 選択ソート")
+
+    let list = make_list_9()
+    let expected = make_sorted_9()
+    Console.WriteLine("  input:  " + list.to_string())
+    selection_sort(list)
+    Console.WriteLine("  output: " + list.to_string())
+    assert_list("selection sort 9", list, expected)
+
+    // 重複要素
+    let dup = new IntList(head: null, size: 0)
+    dup.push_back(3)
+    dup.push_back(1)
+    dup.push_back(3)
+    dup.push_back(2)
+    dup.push_back(1)
+    selection_sort(dup)
+    let dup_exp = new IntList(head: null, size: 0)
+    dup_exp.push_back(1)
+    dup_exp.push_back(1)
+    dup_exp.push_back(2)
+    dup_exp.push_back(3)
+    dup_exp.push_back(3)
+    assert_list("selection with dups", dup, dup_exp)
+}
+
+fn test_merge_sort() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[6] マージソート")
+
+    let list = make_list_9()
+    let expected = make_sorted_9()
+    Console.WriteLine("  input:  " + list.to_string())
+    let sorted = merge_sort(list)
+    Console.WriteLine("  output: " + sorted.to_string())
+    assert_list("merge sort 9", sorted, expected)
+
+    // 空リスト
+    let empty = new IntList(head: null, size: 0)
+    let empty_sorted = merge_sort(empty)
+    assert_str("merge empty", empty_sorted.to_string(), "[]")
+
+    // 2要素逆順
+    let two = new IntList(head: null, size: 0)
+    two.push_back(9)
+    two.push_back(1)
+    let two_sorted = merge_sort(two)
+    assert_str("merge two", two_sorted.to_string(), "[1, 9]")
+
+    // 大きめのリスト (12要素)
+    let big = new IntList(head: null, size: 0)
+    big.push_back(15)
+    big.push_back(3)
+    big.push_back(12)
+    big.push_back(7)
+    big.push_back(1)
+    big.push_back(20)
+    big.push_back(8)
+    big.push_back(11)
+    big.push_back(4)
+    big.push_back(16)
+    big.push_back(2)
+    big.push_back(19)
+    let big_sorted = merge_sort(big)
+    assert_str("merge big 12", big_sorted.to_string(), "[1, 2, 3, 4, 7, 8, 11, 12, 15, 16, 19, 20]")
+
+    // 全同値
+    let same = new IntList(head: null, size: 0)
+    same.push_back(7)
+    same.push_back(7)
+    same.push_back(7)
+    same.push_back(7)
+    let same_sorted = merge_sort(same)
+    assert_str("merge all same", same_sorted.to_string(), "[7, 7, 7, 7]")
+}
+
+fn test_graph_dfs_bfs() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[7] グラフ探索 (DFS / BFS)")
+
+    // グラフ構築:
+    //   0 → 1, 2
+    //   1 → 3
+    //   2 → 3, 4
+    //   3 → 5
+    //   4 → 5
+    let g = new Graph(adj: null, node_count: 0)
+    g.init(6)
+    g.add_edge(0, 1)
+    g.add_edge(0, 2)
+    g.add_edge(1, 3)
+    g.add_edge(2, 3)
+    g.add_edge(2, 4)
+    g.add_edge(3, 5)
+    g.add_edge(4, 5)
+
+    Console.WriteLine("  Graph: 0->1, 0->2, 1->3, 2->3, 2->4, 3->5, 4->5")
+
+    let dfs_result = run_dfs(g, 0)
+    Console.WriteLine("  DFS from 0: " + dfs_result)
+
+    let bfs_result = run_bfs(g, 0)
+    Console.WriteLine("  BFS from 0: " + bfs_result)
+
+    // add_edge prepends → edges of 0=[2,1], 2=[4,3]
+    // DFS: pop 0, neighbors [1,2] → push 1,2 → stack [2,1]
+    //   pop 2, neighbors [3,4] → push 3,4 → stack [4,3,1]
+    //   pop 4, neighbors [5] → push 5 → stack [5,3,1]
+    //   pop 5 (no unvisited) → pop 3 (edges [5] visited) → pop 1 (edges [3] visited)
+    //   Result: "0 2 4 5 3 1"
+    assert_str("DFS order", dfs_result, "0 2 4 5 3 1")
+
+    // BFS: enqueue 0, dequeue 0 → neighbors [1, 2] → enqueue 1, 2
+    //   dequeue 1 → neighbors [3] → enqueue 3
+    //   dequeue 2 → neighbors [3(visited), 4] → enqueue 4
+    //   dequeue 3 → neighbors [5] → enqueue 5
+    //   dequeue 4 → neighbors [5(visited)]
+    //   dequeue 5
+    //   Result: "0 1 2 3 4 5"
+    assert_str("BFS order", bfs_result, "0 1 2 3 4 5")
+
+    // 単一ノード
+    let g2 = new Graph(adj: null, node_count: 0)
+    g2.init(1)
+    assert_str("DFS single", run_dfs(g2, 0), "0")
+    assert_str("BFS single", run_bfs(g2, 0), "0")
+
+    // 線形グラフ: 0→1→2→3
+    let g3 = new Graph(adj: null, node_count: 0)
+    g3.init(4)
+    g3.add_edge(0, 1)
+    g3.add_edge(1, 2)
+    g3.add_edge(2, 3)
+    assert_str("DFS linear", run_dfs(g3, 0), "0 1 2 3")
+    assert_str("BFS linear", run_bfs(g3, 0), "0 1 2 3")
+
+    // 扇形グラフ: 0→1, 0→2, 0→3
+    let g4 = new Graph(adj: null, node_count: 0)
+    g4.init(4)
+    g4.add_edge(0, 1)
+    g4.add_edge(0, 2)
+    g4.add_edge(0, 3)
+    // edges of 0: [3, 2, 1] → neighbors push_front: [1, 2, 3]
+    // DFS: push 1,2,3 → stack [3,2,1] → pop 3, pop 2, pop 1
+    assert_str("DFS fan", run_dfs(g4, 0), "0 3 2 1")
+    // BFS: enqueue 1,2,3 → dequeue 1,2,3
+    assert_str("BFS fan", run_bfs(g4, 0), "0 1 2 3")
+}
+
+fn test_combined() -> void {
+    Console.WriteLine("")
+    Console.WriteLine("[8] 統合テスト")
+
+    // スタックで逆順を作る
+    let stack = new IntStack(top: null, count: 0)
+    var i = 1
+    while i <= 5 {
+        stack.push(i)
+        i = i + 1
+    }
+    let reversed = new IntList(head: null, size: 0)
+    while stack.is_empty() == false {
+        reversed.push_back(stack.pop())
+    }
+    assert_str("stack reverse", reversed.to_string(), "[5, 4, 3, 2, 1]")
+
+    // 逆順リストをバブルソートでソート
+    bubble_sort(reversed)
+    assert_str("sort reversed", reversed.to_string(), "[1, 2, 3, 4, 5]")
+
+    // キューでBFS順序をリスト化
+    let g = new Graph(adj: null, node_count: 0)
+    g.init(5)
+    g.add_edge(0, 1)
+    g.add_edge(0, 2)
+    g.add_edge(1, 3)
+    g.add_edge(1, 4)
+    let bfs_order = run_bfs(g, 0)
+    Console.WriteLine("  BFS(5-node tree): " + bfs_order)
+    // edges of 0: [2, 1] → neighbors [1, 2]
+    // edges of 1: [4, 3] → neighbors [3, 4]
+    assert_str("BFS 5-node tree", bfs_order, "0 1 2 3 4")
+
+    // 3つのソートアルゴリズムの結果が一致するか
+    let data1 = make_list_9()
+    let data2 = make_list_9()
+    let data3 = make_list_9()
+    bubble_sort(data1)
+    selection_sort(data2)
+    let data3_sorted = merge_sort(data3)
+    assert_bool("bubble == selection", data1.equals(data2), true)
+    assert_bool("bubble == merge", data1.equals(data3_sorted), true)
+    Console.WriteLine("  all 3 sorts agree: " + data1.to_string())
+}
+
+// ════════════════════════════════════════════════════════════
+// エントリーポイント
+// ════════════════════════════════════════════════════════════
+
+pub fn main() {
+    Console.WriteLine("========================================")
+    Console.WriteLine("  Aura Hard Test — DS / Sort / Graph")
+    Console.WriteLine("========================================")
+
+    test_data_structures()
+    test_stack()
+    test_queue()
+    test_bubble_sort()
+    test_selection_sort()
+    test_merge_sort()
+    test_graph_dfs_bfs()
+    test_combined()
+
+    Console.WriteLine("")
+    Console.WriteLine("========================================")
+    Console.WriteLine("  全テスト完了")
+    Console.WriteLine("========================================")
+}
