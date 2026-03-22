@@ -781,6 +781,7 @@ public sealed class SemanticAnalyzer
                 break;
 
             case TryStmtNode ts:
+                Emit("AUR5001", DiagnosticSeverity.Warning, ts.Span, Msg.Diag("AUR5001"));
                 AnalyzeBlock(ts.TryBlock, ctx);
                 foreach (var c in ts.Catches) AnalyzeCatch(c, ctx);
                 if (ts.Finally != null) AnalyzeBlock(ts.Finally, ctx);

@@ -270,6 +270,12 @@ public static class DiagnosticMessages
             "Aura はビット演算子をサポートしていません: {0}",
             "Aura 不支持位运算符：{0}");
 
+        // ── AUR5xxx: Deprecation warnings ────────────────────────────
+        Add("AUR5001",
+            "try/catch is obsoleted, use ~ instead.",
+            "try/catch は非推奨です。代わりに ~ を使用してください。",
+            "try/catch 已弃用，请使用 ~ 代替。");
+
         // ── CG1xxx: Type resolution (codegen) ──────────────────────
         Add("CG1001",
             "Unknown type '{0}'",
