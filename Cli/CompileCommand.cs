@@ -112,6 +112,7 @@ internal static class CompileCommand
         {
             Console.WriteLine();
             ConsoleWriter.Verbose(true, "[3] " + Msg.Cli("lowering_skipped"));
+            ConsoleWriter.DiagnosticWarning("  " + Msg.Cli("nolower_warning"));
             loweredAst = ast;
         }
         else

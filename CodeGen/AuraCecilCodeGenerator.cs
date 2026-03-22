@@ -664,11 +664,15 @@ public sealed class AuraCecilCodeGenerator
                     gil.Append(gil.Create(Mono.Cecil.Cil.OpCodes.Ret));
                     td.Methods.Add(get);
 
-                    // Setter (best-effort: if AST indicates "set" exists; else omit)
-                    bool hasSet = AstReflection.TryGetPropertyValue(mem, "Set", "Setter", "SetBody") is not null;
-                    // If we cannot tell, default to having a setter for now (makes interop easier).
-                    if (!hasSet)
-                        hasSet = true;
+                    // Setter: check AST accessors for an explicit set accessor
+                    bool hasSet = false;
+                    if (mem is PropertyDeclNode propDecl)
+                    {
+                        hasSet = propDecl.Accessors.Any(a => a.Kind == AccessorKind.Set);
+                        // If no accessors declared at all (auto-property), include both get and set
+                        if (propDecl.Accessors.Count == 0)
+                            hasSet = true;
+                    }
 
                     MethodDefinition? set = null;
                     if (hasSet)

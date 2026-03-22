@@ -115,6 +115,11 @@ public static class CliMessages
             "ローワリングをスキップしました (--no-lower)",
             "跳过降级变换 (--no-lower)");
 
+        Add("nolower_warning",
+            "WARNING: --no-lower is a debug option. Code generation expects lowered AST and may produce incorrect output.",
+            "警告: --no-lower はデバッグ用オプションです。コード生成は lowering 済み AST を前提としており、不正な出力が生成される可能性があります。",
+            "警告：--no-lower 是调试选项。代码生成假定 AST 已经过降级变换，可能产生不正确的输出。");
+
         Add("codegen_failed",
             "Code generation failed",
             "コード生成に失敗しました",

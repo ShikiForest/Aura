@@ -291,6 +291,11 @@ public static class DiagnosticMessages
             "try/catch は非推奨です。代わりに ~ を使用してください。",
             "try/catch 已弃用，请使用 ~ 代替。");
 
+        Add("AUR5002",
+            "Generic constraints (where clauses) are not yet supported. Constraints on '{0}' will have no effect.",
+            "ジェネリック制約（where句）はまだサポートされていません。'{0}' の制約は効果がありません。",
+            "泛型约束（where 子句）尚未支持。'{0}' 的约束不会生效。");
+
         // ── CG1xxx: Type resolution (codegen) ──────────────────────
         Add("CG1001",
             "Unknown type '{0}'",
@@ -649,6 +654,11 @@ public static class DiagnosticMessages
             "await in if-condition is not supported by non-blocking async lowering; treating the condition as blocking.",
             "if 条件内の await はノンブロッキング async lowering でサポートされていません。条件をブロッキングとして処理します。",
             "非阻塞 async lowering 不支持 if 条件中的 await；将条件视为阻塞处理。");
+
+        Add("AURLW3010",
+            "Async function '{0}' uses await patterns that cannot be lowered to non-blocking code. Restructure await expressions to use simple forms: 'let x = await expr;', 'await expr;', or 'return await expr;'.",
+            "非同期関数 '{0}' のawaitパターンはノンブロッキングコードに変換できません。awaitを単純な形式に変更してください: 'let x = await expr;'、'await expr;'、または 'return await expr;'。",
+            "异步函数 '{0}' 的 await 模式无法转换为非阻塞代码。请将 await 表达式改为简单形式：'let x = await expr;'、'await expr;' 或 'return await expr;'。");
     }
 
     public static string Get(string code, AuraLocale locale, params object[] args)

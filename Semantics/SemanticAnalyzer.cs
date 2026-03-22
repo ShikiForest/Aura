@@ -709,6 +709,11 @@ public sealed class SemanticAnalyzer
         _scope = new LocalScope(parent: null);
         _inAsyncFunction = fn.Modifiers.Contains(FunctionModifier.Async);
 
+        // AUR5002: where constraints are parsed but not yet emitted as CLR generic constraints
+        if (fn.WhereClauses.Count > 0)
+            Emit("AUR5002", DiagnosticSeverity.Error, fn.WhereClauses[0].Span,
+                Msg.Diag("AUR5002", fn.Name.Text));
+
         // Resolve declared return type for return-statement validation
         _currentReturnType = fn.ReturnSpec switch
         {
@@ -802,8 +807,8 @@ public sealed class SemanticAnalyzer
                 }
                 else if (_currentReturnType != null && _currentReturnType != TypeRef.Unknown)
                 {
-                    // return without value but function declares a return type
-                    Emit("AUR2641", DiagnosticSeverity.Warning, ret.Span, Msg.Diag("AUR2641", "fn", _currentReturnType));
+                    // return without value but function declares a return type — this is an error
+                    Emit("AUR2641", DiagnosticSeverity.Error, ret.Span, Msg.Diag("AUR2641", "fn", _currentReturnType));
                 }
                 break;
 

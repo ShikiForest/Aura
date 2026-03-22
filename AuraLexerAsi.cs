@@ -106,9 +106,11 @@ public partial class AuraLexer
                 or DECIMAL_T or BOOL_T or CHAR_T or STRING_T
                 or OBJECT_T or VOID_T => true,
 
-            // Type suffix tokens
-            GT => true,       // closes generic: List<string>
-            QUESTION => true, // nullable suffix: string?
+            // NOTE: GT and QUESTION were previously ASI triggers for closing generics
+            // and nullable suffixes, but they caused false insertions in ternary
+            // expressions, switch expressions, relational comparisons, and multi-line
+            // generic type arguments. Removed per code review — these contexts are
+            // covered by the subsequent token (identifier, RPAREN, etc.) triggering ASI.
 
             // Wildcard
             UNDERSCORE => true,

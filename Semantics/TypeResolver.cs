@@ -28,12 +28,14 @@ public sealed class TypeResolver
     {
         var name = nt.Name.ToString();
 
-        // 如果是带命名空间的全限定名，直接查
+        // Fully-qualified name: check Aura index first, then CLR
         if (name.Contains('.'))
         {
             if (_index.TryGetType(name, out var sym))
                 return new TypeRef.Named(name, sym.Kind);
-            return new TypeRef.Named(name, TypeKind.External);
+            if (TryResolveDotNetType(name) is not null)
+                return new TypeRef.Named(name, TypeKind.External);
+            return TypeRef.Unknown;
         }
 
         // 1) 当前命名空间
@@ -53,19 +55,43 @@ public sealed class TypeResolver
                 return new TypeRef.Named(sym3.FullName, sym3.Kind);
         }
 
-        // 外部类型（比如 System.String / System.Console 的未全限定写法如果靠 import System，这里也会拼出来）
+        // External type: try each import + name combination, but only accept if CLR can actually resolve it
         foreach (var imp in ctx.Imports)
         {
             var ext = Combine(imp, name);
-            // 如果 import 的是 System，ext 可能是 System.Console 等
-            return new TypeRef.Named(ext, TypeKind.External);
+            if (TryResolveDotNetType(ext) is not null)
+                return new TypeRef.Named(ext, TypeKind.External);
         }
 
-        return new TypeRef.Named(name, TypeKind.External);
+        // Last resort: try bare name as external (e.g., fully-qualified name used without import)
+        if (TryResolveDotNetType(name) is not null)
+            return new TypeRef.Named(name, TypeKind.External);
+
+        // Unresolved: return Unknown so diagnostics can catch it
+        return TypeRef.Unknown;
     }
 
     public static string Combine(string ns, string name)
         => string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+
+    private static Type? TryResolveDotNetType(string fullName)
+    {
+        try
+        {
+            var t = Type.GetType(fullName);
+            if (t != null) return t;
+
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                t = asm.GetType(fullName);
+                if (t != null) return t;
+            }
+        }
+        catch (Exception ex) when (ex is TypeLoadException or System.Reflection.ReflectionTypeLoadException or System.IO.FileNotFoundException or BadImageFormatException)
+        {
+        }
+        return null;
+    }
 }
 
 public readonly record struct ResolutionContext(string Namespace, IReadOnlyList<string> Imports);

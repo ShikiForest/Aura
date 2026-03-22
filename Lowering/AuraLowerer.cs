@@ -546,58 +546,16 @@ private FunctionDeclNode LowerAsyncFunction(FunctionDeclNode fn)
 
     if (!canLowerNonBlocking)
     {
-        // Blocking fallback: wrap the entire body in Task.Run(() => { body })
-        // so the method doesn't block the calling thread synchronously.
-        // The inner body still uses GetAwaiter().GetResult() for await expressions,
-        // but runs on a thread pool thread.
-
-        // Build Task.Run(() => { body }) wrapping the blocking fallback body
-        var emptyParams = Array.Empty<LambdaParamNode>().ToList();
-
-        if (userReturnType is not null)
-        {
-            // Task<T>: Task.Run<T>(() => blockAsExpr)
-            var taskRunCallee = new MemberAccessExprNode(block.Span,
-                new NameExprNode(block.Span, new NameNode(block.Span, "System.Threading.Tasks.Task")),
-                new NameNode(block.Span, "Run"),
-                new List<TypeNode> { userReturnType });
-
-            var taskRunExpr = new CallExprNode(block.Span, taskRunCallee,
-                new List<ArgumentNode>
-                {
-                    new PositionalArgNode(block.Span,
-                        new LambdaExprNode(block.Span, emptyParams,
-                            MakeBlockAsExpr(block, userReturnType)))
-                });
-            var taskRunBody = new FunctionBlockBodyNode(block.Span,
-                new BlockStmtNode(block.Span, new List<StmtNode>
-                {
-                    new ReturnStmtNode(block.Span, taskRunExpr)
-                }));
-            return fn with { Body = taskRunBody };
-        }
-        else
-        {
-            // Task (void): Task.Run(() => blockAsExpr)
-            var taskRunCallee = new MemberAccessExprNode(block.Span,
-                new NameExprNode(block.Span, new NameNode(block.Span, "System.Threading.Tasks.Task")),
-                new NameNode(block.Span, "Run"),
-                Array.Empty<TypeNode>());
-
-            var taskRunExpr = new CallExprNode(block.Span, taskRunCallee,
-                new List<ArgumentNode>
-                {
-                    new PositionalArgNode(block.Span,
-                        new LambdaExprNode(block.Span, emptyParams,
-                            MakeBlockAsExpr(block, null)))
-                });
-            var taskRunBody = new FunctionBlockBodyNode(block.Span,
-                new BlockStmtNode(block.Span, new List<StmtNode>
-                {
-                    new ReturnStmtNode(block.Span, taskRunExpr)
-                }));
-            return fn with { Body = taskRunBody };
-        }
+        // Previously this generated a blocking fallback (Task.Run + GetAwaiter().GetResult()),
+        // which silently changed async semantics to blocking and risked deadlocks.
+        // Now we emit an error instead of generating incorrect code.
+        _diags.Add(new LoweringDiagnostic(
+            fn.Span,
+            "AURLW3010",
+            LoweringSeverity.Error,
+            Msg.Diag("AURLW3010", fn.Name.Text)
+        ));
+        return fn; // return unchanged — error prevents codegen output
     }
 
     // Non-blocking lowering:
