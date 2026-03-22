@@ -1,5 +1,7 @@
 # **Aura Programming Language Specification (v1.1)**
 
+[日本語](Readme.ja.md) | [中文](Readme.zh.md) | English
+
 **Target Platform:** .NET 10+ (CLI / CTS)
 
 **Core Philosophy:** Architecture constraint as syntax, zero implicit side effects, deep decoupling, and defensive programming.
@@ -14,7 +16,11 @@ Aura uses postfix type declarations and maps its fundamental types directly to t
 
 * `let`: Immutable binding (maps to `readonly`).
 * `var`: Mutable binding.
-* Supports type inference.
+* Supports type inference — the type annotation `: type` is optional.
+
+```
+variableDecl : (LET | VAR) identifier (COLON type)? (ASSIGN expression)? SEMI ;
+```
 
 ```aura
 let pi: f64 = 3.14159
@@ -26,21 +32,37 @@ var name: string? = null // Nullable reference type
 
 | Aura Type | .NET CTS | Description |
 | :---- | :---- | :---- |
-| i8, i16, i32, i64 | SByte, Int16, Int32, Int64 | Signed integers |
-| u8, u16, u32, u64 | Byte, UInt16, UInt32, UInt64 | Unsigned integers |
-| f32, f64 | Single, Double | Floating-point numbers |
-| decimal | System.Decimal | High-precision decimal |
-| bool | System.Boolean | Boolean value |
-| char | System.Char | Unicode character |
-| string | System.String | Immutable string |
-| object | System.Object | Root base type |
+| `i8`, `i16`, `i32`, `i64` | SByte, Int16, Int32, Int64 | Signed integers |
+| `u8`, `u16`, `u32`, `u64` | Byte, UInt16, UInt32, UInt64 | Unsigned integers |
+| `f32`, `f64` | Single, Double | Floating-point numbers |
+| `decimal` | System.Decimal | High-precision decimal |
+| `bool` | System.Boolean | Boolean value |
+| `char` | System.Char | Unicode character |
+| `string` | System.String | Immutable string |
+| `object` | System.Object | Root base type |
+| `void` | System.Void | No return value |
+| `handle` | System.Int32 | Opaque object handle |
+
+### **Type System**
+
+```
+type
+    : functionType nullableSuffix?    // (i32, i32) -> bool
+    | windowOfType nullableSuffix?    // windowof<T>
+    | namedType    nullableSuffix?    // QualifiedName<TypeArgs>?
+    ;
+```
+
+* **Nullable suffix**: any type followed by `?` becomes nullable.
+* **Function types**: `(param_types) -> return_type`.
+* **Window-of types**: `windowof<T>` — projection type reference.
 
 ### **Comments**
 
 ```aura
 // Single-line comment
 /* Multi-line comment */
-/// Documentation comment (Generates XML)
+/// Documentation comment (generates XML)
 ```
 
 ---
@@ -50,6 +72,18 @@ var name: string? = null // Nullable reference type
 Functions are first-class citizens, mapped underlyingly to `System.Delegate`, `Func<T>`, or `Action<T>`.
 
 ### **Function Declarations**
+
+```
+functionDecl
+    : attributeSection* visibilityModifier?
+      functionModifier*                          // async | derivable
+      FN identifier typeParameters?
+      LPAREN parameterList? RPAREN
+      functionReturnOrState?                     // -> type | : StateName
+      whereClause*
+      functionBody                               // block | => expression ;
+    ;
+```
 
 ```aura
 // Standard function
@@ -67,9 +101,27 @@ async fn fetch_data(url: string) -> string {
 fn square(x: i32) -> i32 => x * x
 ```
 
-### **Pipe Operator (|)**
+### **Operator Overloading**
+
+```
+operatorDecl
+    : FN OPERATOR overloadableOp LPAREN parameterList? RPAREN functionReturnOrState? functionBody ;
+overloadableOp : PLUS | MINUS | STAR | SLASH | PERCENT | EQUAL | NOTEQUAL | LT | GT | LE | GE ;
+```
+
+```aura
+fn operator +(other: Vec2) -> Vec2 {
+    return new Vec2(x: self.x + other.x, y: self.y + other.y)
+}
+```
+
+### **Pipe Operator (`|`)**
 
 Passes the result of the preceding expression as the first argument to the next function.
+
+```
+pipeExpression : lambdaExpression (PIPE lambdaExpression)* ;
+```
 
 * `_`: Placeholder used when the piped value is not the first argument.
 
@@ -81,20 +133,37 @@ Passes the result of the preceding expression as the first argument to the next 
 item | list.Add(_)
 ```
 
-### **Exception Guard (~)**
+### **Exception Guard (`~`)**
 
 Expression-based exception handling. Replaces `try/catch` as the recommended pattern.
+
+```
+guardExpression : pipeExpression (TILDE pipeExpression)* ;
+```
+
 The right side must be a function of type `(Exception) -> T`.
 
 ```aura
 // Attempts to execute the task; falls back to handle_error on failure
 let result = perform_task() ~ handle_error
+
+// Inline lambda handler
+let data = parse(input) ~ (e) => default_value
 ```
 
 > **Note:** `try/catch` is still supported for compatibility but is **deprecated** (warning AUR5001).
 > Use `~` instead.
 
 ### **Control Flow**
+
+```
+ifStatement    : IF expression block (ELSE (ifStatement | block))? ;
+forStatement   : FOR identifier IN expression block ;
+whileStatement : WHILE expression block ;
+returnStatement : RETURN expression? SEMI ;
+breakStatement  : BREAK SEMI ;
+continueStatement : CONTINUE SEMI ;
+```
 
 ```aura
 if condition { ... } else { ... }
@@ -103,15 +172,62 @@ while condition { ... }
 return, break, continue
 ```
 
+### **Switch Statement & Expression**
+
+```
+// Statement form
+switchStatement : SWITCH (LPAREN expression RPAREN | expression) switchBlock ;
+switchLabel     : CASE pattern (WHEN expression)? COLON | DEFAULT COLON ;
+
+// Expression form (value-producing)
+switchExpression    : unaryExpression SWITCH switchExpressionBlock ;
+switchExpressionArm : pattern (WHEN expression)? FATARROW expression ;
+```
+
+```aura
+let name = status switch {
+    Status.Active => "active",
+    Status.Banned when is_admin => "banned (admin)",
+    _ => "unknown"
+}
+```
+
+### **Pattern Matching**
+
+```
+primaryPattern
+    : UNDERSCORE                                 // discard
+    | VAR identifier?                            // var binding
+    | typeReference identifier                   // type test with binding
+    | typeReference                              // type test
+    | (LT | LE | GT | GE) constantExpression    // relational
+    | constantExpression                         // constant
+    | LBRACE propertySubpatternList? RBRACE      // property
+    | LBRACK patternList? RBRACK                 // list
+    ;
+patternOr  : patternAnd (OR patternAnd)* ;
+patternAnd : patternNot (AND patternNot)* ;
+patternNot : NOT patternNot | primaryPattern ;
+```
+
 ---
 
 ## **Object-Oriented Core**
 
-### **Classes and Traits**
+### **Classes, Structs, and Traits**
+
+```
+classDecl  : attributeSection* visibilityModifier? CLASS  identifier typeParameters? (COLON typeList)? classBody ;
+structDecl : attributeSection* visibilityModifier? STRUCT identifier typeParameters? (COLON typeList)? classBody ;
+traitDecl  : attributeSection* visibilityModifier? TRAIT  identifier traitBody ;
+
+classMember : fieldDecl | propertyDecl | functionDecl | operatorDecl | enumDecl | windowDecl ;
+traitMember : functionSignature SEMI ;
+```
 
 * `class`: Reference type.
 * `struct`: Value type.
-* `trait`: Interface.
+* `trait`: Interface (function signatures only, no implementation).
 
 ### **Access Modifiers**
 
@@ -120,11 +236,23 @@ Strict visibility constraints. The `protected` modifier does not exist.
 * `pub`: Public.
 * **Default**: Private / Internal.
 
+### **Fields and Properties**
+
+```
+fieldDecl    : visibilityModifier? (LET | VAR) identifier (COLON type)? (ASSIGN expression)? SEMI ;
+propertyDecl : visibilityModifier? PROPERTY identifier COLON type propertyAccessorBlock? SEMI ;
+
+accessorDecl
+    : GET (FATARROW expression SEMI | block)?
+    | SET (FATARROW expression SEMI | block)?
+    ;
+```
+
 ### **Strict Member Constraints**
 
-* **No Public Fields**: All fields must be private.
+* **No Public Fields** (AUR4001): All fields must be private.
 * **Mandatory Properties**: Public data must be exposed via `property`.
-* **Type Whitelist**: A `pub property` can only expose a CTS Primitive, a `trait`, or a Delegate. Exposing concrete classes or structs is strictly forbidden.
+* **Type Whitelist** (AUR4002): A `pub property` can only expose a CTS Primitive, a `trait`, or a Delegate. Exposing concrete classes or structs is strictly forbidden.
 
 ```aura
 trait ILogger { fn log(msg: string) }
@@ -138,11 +266,31 @@ class Service {
 }
 ```
 
+### **Enums**
+
+```
+enumDecl   : visibilityModifier? ENUM identifier enumBody ;
+enumBody   : LBRACE enumMember (COMMA enumMember)* COMMA? SEMI? RBRACE ;
+enumMember : identifier (ASSIGN expression)? ;
+```
+
+```aura
+enum Color { Red, Green, Blue }
+enum Priority { Low = 0, Medium = 5, High = 10 }
+```
+
 ---
 
 ## **Instantiation — Builder System**
 
 Direct `new` is restricted. All object creation goes through the **builder chain**.
+
+```
+newExpression
+    : NEW typeReference LPAREN argumentList? RPAREN   // normal new (restricted by compiler)
+    | NEW LPAREN expression RPAREN                     // builder new: new(builder)
+    ;
+```
 
 ### **Builder Types (auto-imported)**
 
@@ -157,11 +305,11 @@ Direct `new` is restricted. All object creation goes through the **builder chain
 
 | Pattern | Result |
 | :---- | :---- |
-| `new VoidBuilder()` | ✅ OK — the only allowed zero-arg `new` |
-| `new MyAuraType(prop: val)` | ✅ OK — named-arg property initialisation |
-| `new MyAuraType()` | ❌ AUR4031 — zero-arg new forbidden |
-| `new SomeCLRType(...)` | ❌ AUR4032 — CLR types must use builder chain |
-| `new(builder)` | ✅ OK — canonical builder-based instantiation |
+| `new VoidBuilder()` | OK — the only allowed zero-arg `new` |
+| `new MyAuraType(prop: val)` | OK — named-arg property initialisation |
+| `new MyAuraType()` | AUR4031 — zero-arg new forbidden |
+| `new SomeCLRType(...)` | AUR4032 — CLR types must use builder chain |
+| `new(builder)` | OK — canonical builder-based instantiation |
 
 ### **Builder Syntax**
 
@@ -190,8 +338,6 @@ let builder = new CLRExternalTypeBuilder<System.Windows.Forms.Form>(args: args)
 let form = new(builder)
 ```
 
-`CLRConstructorArgBuilder.GetConstructorDictionary()` scans the subclass's properties and populates the internal `Args` dictionary automatically.
-
 ### **[BuildMe] — Global Service Registration**
 
 ```aura
@@ -209,6 +355,11 @@ let user = Global.getInstance<User>("core")
 ### **Window (Projection)**
 
 A native, strictly-safe projection proxy. A window must be a subset of the target class's public members.
+
+```
+windowDecl      : visibilityModifier? WINDOW identifier COLON typeReference windowBody ;
+windowMemberDecl : identifier COLON type SEMI ;
+```
 
 ```aura
 class User { pub property name: string; pub property age: i32 }
@@ -251,6 +402,11 @@ Room["Lobby"].sendMessage("greet", args)
 
 Aspect-oriented template methods natively supported by the syntax.
 
+```
+functionModifier : ASYNC | DERIVABLE ;
+opDeclStatement  : OP identifier COLON functionType SEMI ;
+```
+
 * `derivable`: Declares an extensible function.
 * `op`: Declares an internal operator (hook).
 * `derivateof`: Retrieves operator tuples for injection.
@@ -266,6 +422,13 @@ derivable fn process() {
 ### **State Functions**
 
 Native state machine support. Implementations are bound to specific enum values.
+
+```
+functionReturnOrState
+    : THINARROW type         // -> ReturnType
+    | COLON qualifiedName    // : State.Value
+    ;
+```
 
 ```aura
 fn run() : State.Idle    { Console.WriteLine("Idling...") }
@@ -287,11 +450,92 @@ let list = [1, 2, 3, 4, 5]
 let result = list[item > 2 && item < 5]   // Returns IEnumerable<i32>
 ```
 
+### **List Literals**
+
+```
+listLiteral : LBRACK (expression (COMMA expression)*)? COMMA? RBRACK ;
+```
+
+```aura
+let nums = [1, 2, 3]
+let empty: List<i32> = []
+```
+
+### **String Interpolation**
+
+```
+interpolatedString : INTERP_START interpolatedStringPart* INTERP_END ;
+```
+
+```aura
+let name = "World"
+let msg = $"Hello, {name}! 2+2={2+2}"
+```
+
 ### **Serialization**
 
 ```aura
 obj.serialize()        // -> string/bytes
 T.deserialize(data)    // -> T
+```
+
+---
+
+## **Expressions**
+
+### **Operator Precedence (high to low)**
+
+| Level | Operators | Associativity |
+| :---- | :---- | :---- |
+| Unary | `+x`, `-x`, `!x`, `await x`, `throw x`, `derivateof x` | Right |
+| Switch | `x switch { ... }` | Left |
+| Multiplicative | `*`, `/`, `%` | Left |
+| Additive | `+`, `-` | Left |
+| Relational | `<`, `>`, `<=`, `>=`, `is`, `as` | Left |
+| Equality | `==`, `!=` | Left |
+| Logical AND | `&&` | Left |
+| Logical OR | `\|\|` | Left |
+| Null coalescing | `??` | Right |
+| Lambda | `(params) => expr` | Right |
+| Pipe | `\|` | Left |
+| Guard | `~` | Left |
+| Ternary | `? :` | Right |
+| Assignment | `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `??=` | Right |
+
+### **Using Statement**
+
+RAII-style resource management.
+
+```
+usingStatement : AWAIT? USING usingResource (block | SEMI) ;
+```
+
+```aura
+using (let conn = open_connection()) {
+    conn.execute(query)
+}
+await using stream { ... }
+```
+
+---
+
+## **Generics & Constraints**
+
+```
+typeParameters : LT typeParameter (COMMA typeParameter)* GT ;
+whereClause    : WHERE identifier COLON constraintList ;
+typeConstraint : typeReference | NEW LPAREN RPAREN | CLASS | STRUCT ;
+```
+
+```aura
+fn find<T>(list: List<T>, pred: (T) -> bool) -> T?
+    where T : IComparable
+{
+    for item in list {
+        if pred(item) { return item }
+    }
+    return null
+}
 ```
 
 ---
@@ -328,15 +572,48 @@ aura compile --lang en samples/main.aura   # English (default)
 
 **Aura Specific:**
 
-`let`, `var`, `fn`, `pub`, `property`, `trait`, `struct`, `class`, `derivable`, `op`, `derivateof`, `window`, `windowof`, `item`, `new` (redefined semantics), `handle`, `self`, `serialize`, `deserialize`
+`let`, `var`, `fn`, `pub`, `property`, `trait`, `struct`, `class`, `derivable`, `op`, `operator`, `derivateof`, `window`, `windowof`, `item`, `new` (redefined semantics), `handle`, `self`, `serialize`, `deserialize`
 
 **Absorbed from C#:**
 
-`if`, `else`, `for`, `while`, `return`, `break`, `continue`, `async`, `await`, `namespace`, `import`, `enum`, `null`, `true`, `false`, `is`, `as`
+`if`, `else`, `for`, `in`, `while`, `return`, `break`, `continue`, `async`, `await`, `namespace`, `import`, `enum`, `switch`, `case`, `default`, `when`, `using`, `null`, `true`, `false`, `is`, `as`, `throw`, `where`, `get`, `set`
+
+**Pattern Keywords:**
+
+`not`, `and`, `or`
 
 **Deprecated (still compiled, warning emitted):**
 
-`try`, `catch` → use `~` instead
+`try`, `catch`, `finally` — use `~` instead
+
+---
+
+## **Diagnostic Codes**
+
+| Code | Severity | Description |
+| :---- | :---- | :---- |
+| AUR1010 | Error | Duplicate type/member declaration |
+| AUR1020 | Error | Duplicate parameter/variable name |
+| AUR1030 | Error | Function overload signature conflict |
+| AUR2220 | Error | `await` used outside `async` function |
+| AUR2321 | Error | Conditional expression branch type mismatch |
+| AUR2510 | Warning | Switch branch types cannot be merged |
+| AUR2511 | Error | Switch expression not exhaustive (missing `_`) |
+| AUR2630 | Error | catch type must derive from Exception |
+| AUR2640 | Error | Return type mismatch |
+| AUR2641 | Warning | Void return in non-void function |
+| AUR4001 | Error | Public fields forbidden |
+| AUR4002 | Error | pub property type not on whitelist |
+| AUR4010 | Error | Trait member not implemented |
+| AUR4020 | Error | struct cannot inherit class |
+| AUR4031 | Error | Forbidden `new` usage |
+| AUR4032 | Error | CLR type must use builder chain |
+| AUR4050 | Error | User-defined constructors forbidden |
+| AUR4100 | Error | Window validation errors |
+| AUR4200 | Error | self decode function validation |
+| AUR4300 | Error | Reserved `item` keyword misuse |
+| AUR4400 | Error | Bitwise operators not supported |
+| AUR5001 | Warning | try/catch deprecated, use `~` |
 
 ---
 
