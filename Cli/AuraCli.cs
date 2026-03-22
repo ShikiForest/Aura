@@ -1,7 +1,7 @@
 using System.Reflection;
 using AuraLang.I18n;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>
 /// Top-level CLI router.

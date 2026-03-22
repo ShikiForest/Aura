@@ -2,7 +2,7 @@ using System.Diagnostics;
 using AuraLang.I18n;
 using AuraLang.Semantics;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>
 /// Implements `aura check`: parse + semantic analysis only.

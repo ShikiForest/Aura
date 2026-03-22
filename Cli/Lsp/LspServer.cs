@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using AuraLang.Ast;
 using AuraLang.Semantics;
 
-namespace AntlrCompiler.Cli.Lsp;
+namespace AuraLang.Cli.Lsp;
 
 /// <summary>
 /// Aura Language Server — handles LSP requests and notifications.

@@ -1,4 +1,4 @@
-namespace AntlrCompiler;
+namespace AuraLang;
 
 class Program
 {

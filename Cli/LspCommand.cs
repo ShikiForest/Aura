@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
-using AntlrCompiler.Cli.Lsp;
+using AuraLang.Cli.Lsp;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>
 /// CLI entry point for the Aura Language Server.

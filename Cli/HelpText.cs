@@ -1,6 +1,6 @@
 using AuraLang.I18n;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 internal static class HelpText
 {

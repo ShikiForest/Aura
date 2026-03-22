@@ -2,7 +2,7 @@ using System.Diagnostics;
 using AuraLang.CodeGen.Tools;
 using AuraLang.I18n;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>
 /// Implements `aura run`: compile → package → execute.

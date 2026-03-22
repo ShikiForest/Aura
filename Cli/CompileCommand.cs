@@ -5,7 +5,7 @@ using AuraLang.I18n;
 using AuraLang.Lowering;
 using AuraLang.Semantics;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 internal static class CompileCommand
 {

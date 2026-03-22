@@ -1,4 +1,4 @@
-# **Aura 编程语言规范 (v1.1)**
+# **Aura 编程语言规范 (v1.2)**
 
 [English](Readme.md) | [日本語](Readme.ja.md) | 中文
 
@@ -8,7 +8,19 @@
 
 ---
 
-## **基础 & 类型**
+### 实现状态说明
+
+各章节标注了当前的实现状态：
+
+| 标记 | 含义 |
+| :---- | :---- |
+| :white_check_mark: **已实现** | 已完全实现并通过测试 |
+| :wrench: **部分实现** | 已解析/分析但代码生成不完整 |
+| :clipboard: **计划中** | 语法已定义但尚未实现 |
+
+---
+
+## **基础 & 类型** :white_check_mark:
 
 Aura 采用后缀类型声明，将基本类型直接映射到 .NET 公共类型系统 (CTS)。
 
@@ -67,7 +79,7 @@ type
 
 ---
 
-## **函数 & 控制流**
+## **函数 & 控制流** :white_check_mark:
 
 函数是一等公民，底层映射为 `System.Delegate`、`Func<T>` 或 `Action<T>`。
 
@@ -101,7 +113,7 @@ async fn fetch_data(url: string) -> string {
 fn square(x: i32) -> i32 => x * x
 ```
 
-### **运算符重载**
+### **运算符重载** :white_check_mark:
 
 ```
 operatorDecl
@@ -115,7 +127,7 @@ fn operator +(other: Vec2) -> Vec2 {
 }
 ```
 
-### **管道运算符 (`|`)**
+### **管道运算符 (`|`)** :white_check_mark:
 
 将前一个表达式的结果作为下一个函数的第一参数传入。
 
@@ -133,7 +145,7 @@ pipeExpression : lambdaExpression (PIPE lambdaExpression)* ;
 item | list.Add(_)
 ```
 
-### **异常守护 (`~`)**
+### **异常守护 (`~`)** :white_check_mark:
 
 基于表达式的异常处理。替代 `try/catch` 的推荐模式。
 
@@ -172,7 +184,7 @@ while condition { ... }
 return, break, continue
 ```
 
-### **Switch 语句 & 表达式**
+### **Switch 语句 & 表达式** :wrench:
 
 ```
 // 语句形式
@@ -192,7 +204,9 @@ let name = status switch {
 }
 ```
 
-### **模式匹配**
+> :wrench: **注意:** switch **表达式** 已完全实现（转换为条件表达式）。switch **语句** (`switch(x) { case ... }`) 已完成解析和验证，但代码生成尚未完成。
+
+### **模式匹配** :white_check_mark:
 
 ```
 primaryPattern
@@ -212,7 +226,7 @@ patternNot : NOT patternNot | primaryPattern ;
 
 ---
 
-## **面向对象核心**
+## **面向对象核心** :white_check_mark:
 
 ### **类、结构体、特征**
 
@@ -281,7 +295,7 @@ enum Priority { Low = 0, Medium = 5, High = 10 }
 
 ---
 
-## **实例化 — 构建器系统**
+## **实例化 — 构建器系统** :white_check_mark:
 
 直接使用 `new` 受到限制。所有对象创建都通过**构建器链**。
 
@@ -352,7 +366,7 @@ let user = Global.getInstance<User>("core")
 
 ## **高级架构特性**
 
-### **Window（投影）**
+### **Window（投影）** :wrench:
 
 原生的、严格安全的投影代理。Window 必须是目标类公开成员的子集。
 
@@ -371,7 +385,7 @@ window PublicInfo : User {
 fn print(info: PublicInfo) { ... }
 ```
 
-### **Handle & Decode**
+### **Handle & Decode** :wrench:
 
 对象的不透明整数引用，确保安全隔离。
 
@@ -388,7 +402,7 @@ class Data {
 }
 ```
 
-### **Room**
+### **Room** :white_check_mark:
 
 内置的消息总线和广播系统。参与的类必须实现 `IRoomReceiver`。
 
@@ -398,7 +412,7 @@ Room["Lobby"].addObject(user)
 Room["Lobby"].sendMessage("greet", args)
 ```
 
-### **Derivable 函数**
+### **Derivable 函数** :white_check_mark:
 
 语法原生支持的面向切面模板方法。
 
@@ -419,7 +433,7 @@ derivable fn process() {
 }
 ```
 
-### **状态函数**
+### **状态函数** :white_check_mark:
 
 原生状态机支持。实现绑定到特定的枚举值。
 
@@ -437,7 +451,7 @@ fn run() : State.Running { Console.WriteLine("Working...") }
 
 ---
 
-## **数据处理 & 集合**
+## **数据处理 & 集合** :white_check_mark:
 
 ### **谓词索引器**
 
@@ -472,7 +486,7 @@ let name = "World"
 let msg = $"Hello, {name}! 2+2={2+2}"
 ```
 
-### **序列化**
+### **序列化** :clipboard:
 
 ```aura
 obj.serialize()        // -> string/bytes
@@ -519,7 +533,7 @@ await using stream { ... }
 
 ---
 
-## **泛型 & 约束**
+## **泛型 & 约束** :wrench:
 
 ```
 typeParameters : LT typeParameter (COMMA typeParameter)* GT ;
@@ -538,6 +552,8 @@ fn find<T>(list: List<T>, pred: (T) -> bool) -> T?
 }
 ```
 
+> :wrench: **注意:** 泛型已完全支持，但 `where` 约束仅完成了解析。使用 `where` 子句目前会产生 AUR5002 错误。CLR 泛型参数约束的生成正在计划中。
+
 ---
 
 ## **从 C# 吸收的特性**
@@ -555,7 +571,7 @@ Aura 保持与以下特性的完全兼容：
 
 ---
 
-## **i18n / 编译器本地化**
+## **i18n / 编译器本地化** :white_check_mark:
 
 Aura 编译器支持三种语言的诊断和 CLI 消息输出。
 

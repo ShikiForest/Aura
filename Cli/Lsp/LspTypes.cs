@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace AntlrCompiler.Cli.Lsp;
+namespace AuraLang.Cli.Lsp;
 
 /// <summary>
 /// Minimal LSP protocol type helpers.

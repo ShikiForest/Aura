@@ -1,4 +1,4 @@
-# **Aura プログラミング言語仕様 (v1.1)**
+# **Aura プログラミング言語仕様 (v1.2)**
 
 [English](Readme.md) | 日本語 | [中文](Readme.zh.md)
 
@@ -8,7 +8,19 @@
 
 ---
 
-## **基本 & 型**
+### 実装状況の凡例
+
+各セクションには現在の実装状況が表示されています：
+
+| バッジ | 意味 |
+| :---- | :---- |
+| :white_check_mark: **実装済み** | 完全に実装・テスト済み |
+| :wrench: **一部実装** | パース/解析済みだがコード生成が不完全 |
+| :clipboard: **予定** | 構文は定義済みだが未実装 |
+
+---
+
+## **基本 & 型** :white_check_mark:
 
 Aura は後置型宣言を採用し、基本型を .NET Common Type System (CTS) に直接マッピングします。
 
@@ -67,7 +79,7 @@ type
 
 ---
 
-## **関数 & 制御フロー**
+## **関数 & 制御フロー** :white_check_mark:
 
 関数は第一級オブジェクトで、内部的に `System.Delegate`、`Func<T>`、`Action<T>` にマッピングされます。
 
@@ -101,7 +113,7 @@ async fn fetch_data(url: string) -> string {
 fn square(x: i32) -> i32 => x * x
 ```
 
-### **演算子オーバーロード**
+### **演算子オーバーロード** :white_check_mark:
 
 ```
 operatorDecl
@@ -115,7 +127,7 @@ fn operator +(other: Vec2) -> Vec2 {
 }
 ```
 
-### **パイプ演算子 (`|`)**
+### **パイプ演算子 (`|`)** :white_check_mark:
 
 前の式の結果を次の関数の第一引数として渡します。
 
@@ -133,7 +145,7 @@ pipeExpression : lambdaExpression (PIPE lambdaExpression)* ;
 item | list.Add(_)
 ```
 
-### **例外ガード (`~`)**
+### **例外ガード (`~`)** :white_check_mark:
 
 式ベースの例外処理。`try/catch` に代わる推奨パターン。
 
@@ -172,7 +184,7 @@ while condition { ... }
 return, break, continue
 ```
 
-### **Switch 文 & 式**
+### **Switch 文 & 式** :wrench:
 
 ```
 // 文形式
@@ -192,7 +204,9 @@ let name = status switch {
 }
 ```
 
-### **パターンマッチング**
+> :wrench: **注記:** switch **式** は完全に実装されています（条件式に変換）。switch **文** (`switch(x) { case ... }`) はパース・検証済みですが、コード生成は未完了です。
+
+### **パターンマッチング** :white_check_mark:
 
 ```
 primaryPattern
@@ -212,7 +226,7 @@ patternNot : NOT patternNot | primaryPattern ;
 
 ---
 
-## **オブジェクト指向コア**
+## **オブジェクト指向コア** :white_check_mark:
 
 ### **クラス、構造体、トレイト**
 
@@ -281,7 +295,7 @@ enum Priority { Low = 0, Medium = 5, High = 10 }
 
 ---
 
-## **インスタンス化 — ビルダーシステム**
+## **インスタンス化 — ビルダーシステム** :white_check_mark:
 
 直接の `new` は制限されています。全てのオブジェクト生成は**ビルダーチェーン**を経由します。
 
@@ -352,7 +366,7 @@ let user = Global.getInstance<User>("core")
 
 ## **高度なアーキテクチャ機能**
 
-### **Window（プロジェクション）**
+### **Window（プロジェクション）** :wrench:
 
 ネイティブかつ厳格に安全なプロジェクションプロキシ。Window は対象クラスの公開メンバーのサブセットでなければなりません。
 
@@ -371,7 +385,7 @@ window PublicInfo : User {
 fn print(info: PublicInfo) { ... }
 ```
 
-### **Handle & Decode**
+### **Handle & Decode** :wrench:
 
 オブジェクトの不透明な整数参照で、安全な分離を保証します。
 
@@ -388,7 +402,7 @@ class Data {
 }
 ```
 
-### **Room**
+### **Room** :white_check_mark:
 
 組み込みのメッセージバス＆ブロードキャストシステム。参加するクラスは `IRoomReceiver` を実装する必要があります。
 
@@ -398,7 +412,7 @@ Room["Lobby"].addObject(user)
 Room["Lobby"].sendMessage("greet", args)
 ```
 
-### **Derivable 関数**
+### **Derivable 関数** :white_check_mark:
 
 構文によってネイティブにサポートされるアスペクト指向のテンプレートメソッド。
 
@@ -419,7 +433,7 @@ derivable fn process() {
 }
 ```
 
-### **状態関数**
+### **状態関数** :white_check_mark:
 
 ネイティブなステートマシンサポート。実装は特定の列挙値にバインドされます。
 
@@ -437,7 +451,7 @@ fn run() : State.Running { Console.WriteLine("Working...") }
 
 ---
 
-## **データ処理 & コレクション**
+## **データ処理 & コレクション** :white_check_mark:
 
 ### **述語インデクサー**
 
@@ -472,7 +486,7 @@ let name = "World"
 let msg = $"Hello, {name}! 2+2={2+2}"
 ```
 
-### **シリアライゼーション**
+### **シリアライゼーション** :clipboard:
 
 ```aura
 obj.serialize()        // -> string/bytes
@@ -519,7 +533,7 @@ await using stream { ... }
 
 ---
 
-## **ジェネリクス & 制約**
+## **ジェネリクス & 制約** :wrench:
 
 ```
 typeParameters : LT typeParameter (COMMA typeParameter)* GT ;
@@ -538,6 +552,8 @@ fn find<T>(list: List<T>, pred: (T) -> bool) -> T?
 }
 ```
 
+> :wrench: **注記:** ジェネリクスは完全にサポートされていますが、`where` 制約はパースのみです。`where` 句を使用すると現在 AUR5002 エラーが発生します。CLR ジェネリックパラメータ制約の出力は計画中です。
+
 ---
 
 ## **C# からの吸収機能**
@@ -555,7 +571,7 @@ Aura は以下との完全な互換性を維持しています：
 
 ---
 
-## **i18n / コンパイラローカライゼーション**
+## **i18n / コンパイラローカライゼーション** :white_check_mark:
 
 Aura コンパイラは診断メッセージと CLI メッセージを3言語で出力できます。
 

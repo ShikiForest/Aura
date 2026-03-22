@@ -1,4 +1,4 @@
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>Options shared by compile and run subcommands.</summary>
 internal abstract record BaseOptions(

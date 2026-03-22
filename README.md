@@ -1,4 +1,4 @@
-# **Aura Programming Language Specification (v1.1)**
+# **Aura Programming Language Specification (v1.2)**
 
 [日本語](Readme.ja.md) | [中文](Readme.zh.md) | English
 
@@ -8,7 +8,19 @@
 
 ---
 
-## **Basics & Types**
+### Implementation Status Legend
+
+Each section is marked with its current implementation status:
+
+| Badge | Meaning |
+| :---- | :---- |
+| :white_check_mark: **Implemented** | Fully implemented and tested |
+| :wrench: **Partial** | Parsed/analyzed but codegen incomplete or limited |
+| :clipboard: **Planned** | Syntax defined but not yet implemented |
+
+---
+
+## **Basics & Types** :white_check_mark:
 
 Aura uses postfix type declarations and maps its fundamental types directly to the .NET Common Type System (CTS).
 
@@ -67,7 +79,7 @@ type
 
 ---
 
-## **Functions & Flow Control**
+## **Functions & Flow Control** :white_check_mark:
 
 Functions are first-class citizens, mapped underlyingly to `System.Delegate`, `Func<T>`, or `Action<T>`.
 
@@ -101,7 +113,7 @@ async fn fetch_data(url: string) -> string {
 fn square(x: i32) -> i32 => x * x
 ```
 
-### **Operator Overloading**
+### **Operator Overloading** :white_check_mark:
 
 ```
 operatorDecl
@@ -115,7 +127,7 @@ fn operator +(other: Vec2) -> Vec2 {
 }
 ```
 
-### **Pipe Operator (`|`)**
+### **Pipe Operator (`|`)** :white_check_mark:
 
 Passes the result of the preceding expression as the first argument to the next function.
 
@@ -133,7 +145,7 @@ pipeExpression : lambdaExpression (PIPE lambdaExpression)* ;
 item | list.Add(_)
 ```
 
-### **Exception Guard (`~`)**
+### **Exception Guard (`~`)** :white_check_mark:
 
 Expression-based exception handling. Replaces `try/catch` as the recommended pattern.
 
@@ -172,7 +184,7 @@ while condition { ... }
 return, break, continue
 ```
 
-### **Switch Statement & Expression**
+### **Switch Statement & Expression** :wrench:
 
 ```
 // Statement form
@@ -192,7 +204,9 @@ let name = status switch {
 }
 ```
 
-### **Pattern Matching**
+> :wrench: **Note:** Switch **expressions** are fully implemented (lowered to conditionals). Switch **statements** (`switch(x) { case ... }`) are parsed and validated but codegen is not yet complete.
+
+### **Pattern Matching** :white_check_mark:
 
 ```
 primaryPattern
@@ -212,7 +226,7 @@ patternNot : NOT patternNot | primaryPattern ;
 
 ---
 
-## **Object-Oriented Core**
+## **Object-Oriented Core** :white_check_mark:
 
 ### **Classes, Structs, and Traits**
 
@@ -281,7 +295,7 @@ enum Priority { Low = 0, Medium = 5, High = 10 }
 
 ---
 
-## **Instantiation — Builder System**
+## **Instantiation -- Builder System** :white_check_mark:
 
 Direct `new` is restricted. All object creation goes through the **builder chain**.
 
@@ -352,7 +366,7 @@ let user = Global.getInstance<User>("core")
 
 ## **Advanced Architectural Features**
 
-### **Window (Projection)**
+### **Window (Projection)** :wrench:
 
 A native, strictly-safe projection proxy. A window must be a subset of the target class's public members.
 
@@ -371,7 +385,7 @@ window PublicInfo : User {
 fn print(info: PublicInfo) { ... }
 ```
 
-### **Handle & Decode**
+### **Handle & Decode** :wrench:
 
 Opaque integer references for objects, ensuring secure isolation.
 
@@ -388,7 +402,7 @@ class Data {
 }
 ```
 
-### **Room**
+### **Room** :white_check_mark:
 
 A built-in message bus and broadcasting system. Classes must implement `IRoomReceiver` to participate.
 
@@ -398,7 +412,7 @@ Room["Lobby"].addObject(user)
 Room["Lobby"].sendMessage("greet", args)
 ```
 
-### **Derivable Functions**
+### **Derivable Functions** :white_check_mark:
 
 Aspect-oriented template methods natively supported by the syntax.
 
@@ -419,7 +433,7 @@ derivable fn process() {
 }
 ```
 
-### **State Functions**
+### **State Functions** :white_check_mark:
 
 Native state machine support. Implementations are bound to specific enum values.
 
@@ -437,7 +451,7 @@ fn run() : State.Running { Console.WriteLine("Working...") }
 
 ---
 
-## **Data Processing & Collections**
+## **Data Processing & Collections** :white_check_mark:
 
 ### **Predicate Indexer**
 
@@ -472,7 +486,7 @@ let name = "World"
 let msg = $"Hello, {name}! 2+2={2+2}"
 ```
 
-### **Serialization**
+### **Serialization** :clipboard:
 
 ```aura
 obj.serialize()        // -> string/bytes
@@ -519,7 +533,7 @@ await using stream { ... }
 
 ---
 
-## **Generics & Constraints**
+## **Generics & Constraints** :wrench:
 
 ```
 typeParameters : LT typeParameter (COMMA typeParameter)* GT ;
@@ -538,6 +552,8 @@ fn find<T>(list: List<T>, pred: (T) -> bool) -> T?
 }
 ```
 
+> :wrench: **Note:** Generics are fully supported, but `where` constraints are parsed only. Using `where` clauses currently produces error AUR5002. CLR generic parameter constraint emission is planned.
+
 ---
 
 ## **Absorbed C# Features**
@@ -555,7 +571,7 @@ Aura maintains full compatibility with:
 
 ---
 
-## **i18n / Compiler Localization**
+## **i18n / Compiler Localization** :white_check_mark:
 
 The Aura compiler supports three output languages for diagnostics and CLI messages.
 

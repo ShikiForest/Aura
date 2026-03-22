@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace AntlrCompiler.Cli.Lsp;
+namespace AuraLang.Cli.Lsp;
 
 /// <summary>
 /// Minimal JSON-RPC 2.0 transport over stdio for LSP.

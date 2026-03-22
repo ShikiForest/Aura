@@ -805,9 +805,10 @@ public sealed class SemanticAnalyzer
                         && !IsAssignableTo(retType, _currentReturnType))
                         Emit("AUR2640", DiagnosticSeverity.Error, ret.Span, Msg.Diag("AUR2640", _currentReturnType, retType));
                 }
-                else if (_currentReturnType != null && _currentReturnType != TypeRef.Unknown)
+                else if (_currentReturnType != null && _currentReturnType != TypeRef.Unknown
+                         && !_currentReturnType.IsVoid)
                 {
-                    // return without value but function declares a return type — this is an error
+                    // return without value but function declares a non-void return type — this is an error
                     Emit("AUR2641", DiagnosticSeverity.Error, ret.Span, Msg.Diag("AUR2641", "fn", _currentReturnType));
                 }
                 break;
@@ -1466,8 +1467,10 @@ public sealed class SemanticAnalyzer
         if (Equals(source, target)) return true;
         if (target == TypeRef.Unknown || source == TypeRef.Unknown) return true;
 
-        // null assignable to nullable
+        // null assignable to nullable or reference types (class, trait, external, string)
         if (source == TypeRef.Null && target is TypeRef.Nullable) return true;
+        if (source == TypeRef.Null && target is TypeRef.Named { ResolvedKind: TypeKind.Class or TypeKind.Trait or TypeKind.External }) return true;
+        if (source == TypeRef.Null && target is TypeRef.Builtin { Kind: BuiltinTypeKind.String or BuiltinTypeKind.Object }) return true;
 
         // T assignable to T?
         if (target is TypeRef.Nullable nt && Equals(source, nt.Inner)) return true;

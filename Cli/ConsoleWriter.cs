@@ -1,6 +1,6 @@
 using AuraLang.I18n;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>
 /// Centralises all terminal output for the Aura CLI.

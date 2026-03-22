@@ -4,7 +4,7 @@ using AuraLang.I18n;
 using AuraLang.Lowering;
 using AuraLang.Semantics;
 
-namespace AntlrCompiler.Cli;
+namespace AuraLang.Cli;
 
 /// <summary>Common severity understood by the CLI layer.</summary>
 internal enum DiagLevel { Error, Warning, Info }
