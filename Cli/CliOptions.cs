@@ -17,7 +17,8 @@ internal sealed record CompileOptions(
     string? AssemblyName,
     bool    Verbose,
     bool    NoLower,
-    string? Lang
+    string? Lang,
+    bool    WinForms = false
 ) : BaseOptions(SourceFile, OutputPath, AssemblyName, Verbose, NoLower, Lang);
 
 /// <summary>Options for `aura run`.</summary>
@@ -29,7 +30,8 @@ internal sealed record RunOptions(
     bool    NoLower,
     string? Lang,
     string  TargetFramework,
-    bool    SelfContained
+    bool    SelfContained,
+    bool    WinForms = false
 ) : BaseOptions(SourceFile, OutputPath, AssemblyName, Verbose, NoLower, Lang);
 
 /// <summary>Options for `aura check`.</summary>

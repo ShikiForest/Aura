@@ -112,6 +112,7 @@ internal static class AuraCli
         string? lang       = null;
         bool verbose       = false;
         bool noLower       = false;
+        bool winForms      = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -140,6 +141,10 @@ internal static class AuraCli
                     noLower = true;
                     break;
 
+                case "--winforms":
+                    winForms = true;
+                    break;
+
                 default:
                     if (args[i].StartsWith('-'))
                     {
@@ -158,7 +163,7 @@ internal static class AuraCli
 
         if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new CompileOptions(sourceFile, outputPath, name, verbose, noLower, lang);
+        result = new CompileOptions(sourceFile, outputPath, name, verbose, noLower, lang, winForms);
         error  = null;
         return true;
     }
@@ -175,8 +180,9 @@ internal static class AuraCli
         string? lang       = null;
         bool verbose       = false;
         bool noLower       = false;
-        string tfm         = "net10.0";
+        string tfm         = "net10.0-windows";
         bool selfContained = false;
+        bool winForms      = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -214,6 +220,11 @@ internal static class AuraCli
                     selfContained = true;
                     break;
 
+                case "--winforms":
+                    winForms = true;
+                    tfm = "net10.0-windows";
+                    break;
+
                 default:
                     if (args[i].StartsWith('-'))
                     {
@@ -232,7 +243,7 @@ internal static class AuraCli
 
         if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new RunOptions(sourceFile, outputPath, name, verbose, noLower, lang, tfm, selfContained);
+        result = new RunOptions(sourceFile, outputPath, name, verbose, noLower, lang, tfm, selfContained, winForms);
         error  = null;
         return true;
     }

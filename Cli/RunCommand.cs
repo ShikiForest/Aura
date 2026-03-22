@@ -18,7 +18,8 @@ internal static class RunCommand
             opts.AssemblyName,
             opts.Verbose,
             opts.NoLower,
-            opts.Lang);
+            opts.Lang,
+            opts.WinForms);
 
         var compileResult = CompileCommand.ExecuteCore(compileOpts);
 
@@ -39,7 +40,8 @@ internal static class RunCommand
 
         var packagerOpts = new AuraExePackager.PackagerOptions(
             TargetFramework: opts.TargetFramework,
-            SelfContained:   opts.SelfContained);
+            SelfContained:   opts.SelfContained,
+            UseWindowsForms: opts.WinForms);
 
         // ── 5: Create host project ────────────────────────────────────────────
         ConsoleWriter.PhaseHeader(5, Msg.Cli("phase_packaging"));

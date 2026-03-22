@@ -1,0 +1,56 @@
+// ============================================================
+// winform_hello.aura — Aura WinForms アプリ デモ
+// 簡単なウィンドウアプリ: フォーム + ラベル + ボタン
+// ============================================================
+// 実行: aura run samples/winform_hello.aura --winforms
+
+pub fn main() {
+    // ── フォーム作成 ─────────────────────────────────────────
+    let form = new System.Windows.Forms.Form()
+    form.Text = "Hello from Aura!"
+    form.Width = 420
+    form.Height = 280
+
+    // ── タイトルラベル ───────────────────────────────────────
+    let title = new System.Windows.Forms.Label()
+    title.Text = "Aura WinForms デモ"
+    title.Left = 20
+    title.Top = 20
+    title.Width = 360
+    title.Height = 40
+
+    // ── サブラベル ────────────────────────────────────────────
+    let sub = new System.Windows.Forms.Label()
+    sub.Text = "Aura -> Mono.Cecil -> .NET IL -> WinForms"
+    sub.Left = 20
+    sub.Top = 65
+    sub.Width = 360
+    sub.Height = 26
+
+    // ── カウンタラベル ────────────────────────────────────────
+    let counter_label = new System.Windows.Forms.Label()
+    counter_label.Text = "クリック数: 0"
+    counter_label.Left = 20
+    counter_label.Top = 100
+    counter_label.Width = 360
+    counter_label.Height = 26
+
+    // ── ボタン ────────────────────────────────────────────────
+    let btn = new System.Windows.Forms.Button()
+    btn.Text = "クリック!"
+    btn.Left = 150
+    btn.Top = 140
+    btn.Width = 100
+    btn.Height = 36
+
+    // ── コントロール追加 ─────────────────────────────────────
+    let controls = form.Controls
+    controls.Add(title)
+    controls.Add(sub)
+    controls.Add(counter_label)
+    controls.Add(btn)
+
+    // ── アプリ起動 ────────────────────────────────────────────
+    System.Windows.Forms.Application.EnableVisualStyles()
+    System.Windows.Forms.Application.Run(form)
+}
