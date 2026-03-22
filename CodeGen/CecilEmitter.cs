@@ -1240,53 +1240,6 @@ private void EmitAwaitUnary(UnaryExprNode u)
             }
         }
 
-        // CLR property/field assignment: obj.Prop = value
-        if (a.Left is MemberAccessExprNode maAssign)
-        {
-            var member = TryResolveMember(maAssign, out bool isStaticMember, out _, out _);
-
-            if (member is PropertyInfo pi && pi.CanWrite)
-            {
-                var setter = pi.GetSetMethod(nonPublic: true);
-                if (setter is not null)
-                {
-                    var propTypeRef = _module.ImportReference(pi.PropertyType);
-                    var tmp = new VariableDefinition(propTypeRef);
-                    _method.Body.Variables.Add(tmp);
-
-                    EmitExpr(a.Right, expected: propTypeRef);
-                    CoerceTopIfNeeded(a.Right.Span, InferExprType(a.Right), propTypeRef);
-                    _il.Append(_il.Create(OpCodes.Stloc, tmp));
-
-                    if (!isStaticMember) EmitExpr(maAssign.Target, expected: null);
-                    _il.Append(_il.Create(OpCodes.Ldloc, tmp));
-                    _il.Append(_il.Create(isStaticMember ? OpCodes.Call : OpCodes.Callvirt,
-                        _module.ImportReference(setter)));
-
-                    _il.Append(_il.Create(OpCodes.Ldloc, tmp));
-                    return;
-                }
-            }
-            else if (member is FieldInfo fi && !fi.IsInitOnly)
-            {
-                var fieldTypeRef = _module.ImportReference(fi.FieldType);
-                var tmp = new VariableDefinition(fieldTypeRef);
-                _method.Body.Variables.Add(tmp);
-
-                EmitExpr(a.Right, expected: fieldTypeRef);
-                CoerceTopIfNeeded(a.Right.Span, InferExprType(a.Right), fieldTypeRef);
-                _il.Append(_il.Create(OpCodes.Stloc, tmp));
-
-                if (!isStaticMember) EmitExpr(maAssign.Target, expected: null);
-                _il.Append(_il.Create(OpCodes.Ldloc, tmp));
-                _il.Append(_il.Create(isStaticMember ? OpCodes.Stsfld : OpCodes.Stfld,
-                    _module.ImportReference(fi)));
-
-                _il.Append(_il.Create(OpCodes.Ldloc, tmp));
-                return;
-            }
-        }
-
         _diags.Add(new CodeGenDiagnostic(a.Span, "CG3100", CodeGenSeverity.Error,
             Msg.Diag("CG3100.assign", a.Left.GetType().Name)));
         EmitExpr(a.Right, expected: null);
@@ -2352,26 +2305,6 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
                 }
             }
 
-            // Fully-qualified static CLR call: System.Windows.Forms.Application.Run(form)
-            {
-                var fqTargetCall = TryReconstructQualifiedName(ma.Target);
-                if (fqTargetCall is not null && fqTargetCall.Contains('.'))
-                {
-                    var firstSegCall = fqTargetCall[..fqTargetCall.IndexOf('.')];
-                    if (LookupLocal(firstSegCall) is null && LookupArg(firstSegCall) is null)
-                    {
-                        var t = TryResolveClrType(fqTargetCall, _imports);
-                        if (t is not null)
-                        {
-                            var mi = ResolveMethodOverloadByScore(t, ma.Member.Text, call.Args, isStatic: true);
-                            if (mi is null) return null;
-                            kind = CallKind.Static;
-                            return ImportMethodReferenceWithGenericArgs(mi, call);
-                        }
-                    }
-                }
-            }
-
             // Instance call
             instanceExpr = ma.Target;
 
@@ -2650,42 +2583,11 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
             }
         }
 
-        // Handle fully-qualified type names as target chains:
-        // e.g.  System.Windows.Forms.Application.Run(...)
-        //       System.Drawing.ContentAlignment.MiddleCenter
-        var fqTarget = TryReconstructQualifiedName(ma.Target);
-        if (fqTarget is not null && fqTarget.Contains('.'))
-        {
-            var firstSeg = fqTarget[..fqTarget.IndexOf('.')];
-            if (LookupLocal(firstSeg) is null && LookupArg(firstSeg) is null)
-            {
-                var t = TryResolveClrType(fqTarget, _imports);
-                if (t is not null)
-                {
-                    isStatic = true;
-                    targetType = t;
-                    return ResolveClrMember(t, memberName, isStatic: true);
-                }
-            }
-        }
-
         var targetClr = ResolveClrTypeFromExpr(ma.Target);
         if (targetClr is null) return null;
         isStatic = false;
         targetType = targetClr;
         return ResolveClrMember(targetClr, memberName, isStatic: false);
-    }
-
-    private static string? TryReconstructQualifiedName(ExprNode e)
-    {
-        if (e is NameExprNode ne) return ne.Name.Text;
-        if (e is MemberAccessExprNode ma)
-        {
-            var parent = TryReconstructQualifiedName(ma.Target);
-            if (parent is null) return null;
-            return parent + "." + ma.Member.Text;
-        }
-        return null;
     }
 
     private static object? ResolveClrMember(Type t, string name, bool isStatic)
@@ -2699,8 +2601,7 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
         var f = t.GetField(name, flags);
         if (f is not null) return f;
 
-        // Use FirstOrDefault to avoid AmbiguousMatchException on overloaded methods
-        var m = t.GetMethods(flags).FirstOrDefault(mm => mm.Name == name);
+        var m = t.GetMethod(name, flags);
         if (m is not null) return m;
 
         return null;

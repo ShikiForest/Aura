@@ -20,8 +20,7 @@ public static class AuraExePackager
         string? RuntimeIdentifier = null,
         bool SelfContained = false,
         string EntryTypeFullName = "AuraModule",
-        string EntryMethodName = "main",
-        bool UseWindowsForms = false
+        string EntryMethodName = "main"
     );
 
     /// <summary>
@@ -102,17 +101,12 @@ public static class AuraExePackager
             .Replace("\"", "&quot;")
             .Replace("'", "&apos;");
 
-        var outputType   = options.UseWindowsForms ? "WinExe" : "Exe";
-        var winformsProp = options.UseWindowsForms
-            ? "\n    <UseWindowsForms>true</UseWindowsForms>"
-            : "";
-
         return $@"<Project Sdk=""Microsoft.NET.Sdk"">
   <PropertyGroup>
-    <OutputType>{outputType}</OutputType>
+    <OutputType>Exe</OutputType>
     <TargetFramework>{options.TargetFramework}</TargetFramework>
     <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>{winformsProp}
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>

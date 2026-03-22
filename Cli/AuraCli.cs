@@ -112,7 +112,6 @@ internal static class AuraCli
         string? lang       = null;
         bool verbose       = false;
         bool noLower       = false;
-        bool winForms      = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -141,10 +140,6 @@ internal static class AuraCli
                     noLower = true;
                     break;
 
-                case "--winforms":
-                    winForms = true;
-                    break;
-
                 default:
                     if (args[i].StartsWith('-'))
                     {
@@ -163,7 +158,7 @@ internal static class AuraCli
 
         if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new CompileOptions(sourceFile, outputPath, name, verbose, noLower, lang, winForms);
+        result = new CompileOptions(sourceFile, outputPath, name, verbose, noLower, lang);
         error  = null;
         return true;
     }
@@ -180,9 +175,8 @@ internal static class AuraCli
         string? lang       = null;
         bool verbose       = false;
         bool noLower       = false;
-        string tfm         = "net10.0-windows";
+        string tfm         = "net10.0";
         bool selfContained = false;
-        bool winForms      = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -220,11 +214,6 @@ internal static class AuraCli
                     selfContained = true;
                     break;
 
-                case "--winforms":
-                    winForms = true;
-                    tfm = "net10.0-windows";
-                    break;
-
                 default:
                     if (args[i].StartsWith('-'))
                     {
@@ -243,7 +232,7 @@ internal static class AuraCli
 
         if (sourceFile is null) { error = Msg.Cli("no_source_file"); return false; }
 
-        result = new RunOptions(sourceFile, outputPath, name, verbose, noLower, lang, tfm, selfContained, winForms);
+        result = new RunOptions(sourceFile, outputPath, name, verbose, noLower, lang, tfm, selfContained);
         error  = null;
         return true;
     }

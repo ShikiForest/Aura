@@ -1160,9 +1160,7 @@ public sealed class SemanticAnalyzer
                         Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.kind", ntt.ResolvedKind, ntt.FullName));
                 }
 
-                // External CLR types may have parameterless constructors (e.g. WinForms controls)
-                var isExternalNew = nt is TypeRef.Named nttNew && nttNew.ResolvedKind == TypeKind.External;
-                if (ne.Args.Count == 0 && !isExternalNew)
+                if (ne.Args.Count == 0)
                     Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.noarg"));
 
                 foreach (var a in ne.Args)

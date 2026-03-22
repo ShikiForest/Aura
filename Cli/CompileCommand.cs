@@ -39,15 +39,6 @@ internal static class CompileCommand
         var totalSw = Stopwatch.StartNew();
         int errors = 0, warnings = 0;
 
-        // ── Pre-load WinForms assemblies into AppDomain for type resolution ───
-        if (opts.WinForms)
-        {
-            // Touching the types forces .NET to load the assemblies into the
-            // AppDomain so that TryResolveClrType() can find WinForms types.
-            _ = typeof(System.Windows.Forms.Form).Name;
-            _ = typeof(System.Drawing.Font).Name;
-        }
-
         // ── Load source ───────────────────────────────────────────────────────
         if (!File.Exists(opts.SourceFile))
         {
