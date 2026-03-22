@@ -154,6 +154,21 @@ public static class DiagnosticMessages
             "catch 型は Exception またはその派生型でなければなりません: 実際は {0}",
             "catch 类型必须是 Exception 或派生：实际 {0}");
 
+        Add("AUR2640",
+            "Return type mismatch: function declares '{0}' but return expression is '{1}'.",
+            "戻り値の型が不一致: 関数は '{0}' を宣言していますが、return 式は '{1}' です。",
+            "返回类型不匹配：函数声明 '{0}'，但 return 表达式为 '{1}'");
+
+        Add("AUR2641",
+            "Function '{0}' declares return type '{1}' but returns nothing.",
+            "関数 '{0}' は戻り値型 '{1}' を宣言していますが、値を返していません。",
+            "函数 '{0}' 声明了返回类型 '{1}'，但未返回值");
+
+        Add("AUR1030",
+            "Duplicate function signature: '{0}' conflicts with an existing overload in '{1}'.",
+            "関数シグネチャの重複: '{0}' は '{1}' 内の既存オーバーロードと競合しています。",
+            "函数签名重复：'{0}' 与 '{1}' 中的已有重载冲突");
+
         // ── AUR4xxx: Architecture constraints ──────────────────────
         Add("AUR4001",
             "Public fields are forbidden: {0}.{1} (use pub property instead).",

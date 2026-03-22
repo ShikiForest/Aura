@@ -24,6 +24,7 @@ public sealed class SemanticAnalyzer
     private LocalScope? _scope;
     private bool _inAsyncFunction;
     private string? _currentTypeName;  // enclosing type name (for builder constraint)
+    private TypeRef? _currentReturnType; // declared return type of current function
 
     public SemanticResult Analyze(CompilationUnitNode cu)
     {
@@ -346,6 +347,22 @@ public sealed class SemanticAnalyzer
 
         // AUR4400: Room.addObject validation — target should implement IRoomReceiver (best-effort check)
         // (Deferred to runtime in v1 — emit warning only)
+
+        // AUR1030: function overload conflict check (State Functions excluded — they share name+params with different StateSpec)
+        foreach (var (name, fns) in sym.Functions)
+        {
+            if (fns.Count < 2) continue;
+            var seen = new Dictionary<string, FunctionDeclNode>(StringComparer.Ordinal);
+            foreach (var fn in fns)
+            {
+                // State functions have distinct StateSpec; build a key that includes it
+                var key = BuildFunctionSignatureKey(fn, ctx, sym.Namespace);
+                if (seen.TryGetValue(key, out _))
+                    Emit("AUR1030", DiagnosticSeverity.Error, fn.Span, Msg.Diag("AUR1030", key, sym.FullName));
+                else
+                    seen[key] = fn;
+            }
+        }
     }
 
     private IReadOnlyList<string> GetImports(string ns)
@@ -692,6 +709,14 @@ public sealed class SemanticAnalyzer
         _scope = new LocalScope(parent: null);
         _inAsyncFunction = fn.Modifiers.Contains(FunctionModifier.Async);
 
+        // Resolve declared return type for return-statement validation
+        _currentReturnType = fn.ReturnSpec switch
+        {
+            ReturnTypeSpecNode r => _typeResolver!.Resolve(r.ReturnType, ctx),
+            StateSpecNode => null,  // state functions don't have a normal return type
+            _ => null               // void / unspecified
+        };
+
         // parameters
         foreach (var p in fn.Parameters)
         {
@@ -769,7 +794,17 @@ public sealed class SemanticAnalyzer
 
             case ReturnStmtNode ret:
                 if (ret.Value != null)
-                    AnalyzeExpr(ret.Value, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
+                {
+                    var retType = AnalyzeExpr(ret.Value, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
+                    if (_currentReturnType != null && retType != TypeRef.Unknown && _currentReturnType != TypeRef.Unknown
+                        && !IsAssignableTo(retType, _currentReturnType))
+                        Emit("AUR2640", DiagnosticSeverity.Error, ret.Span, Msg.Diag("AUR2640", _currentReturnType, retType));
+                }
+                else if (_currentReturnType != null && _currentReturnType != TypeRef.Unknown)
+                {
+                    // return without value but function declares a return type
+                    Emit("AUR2641", DiagnosticSeverity.Warning, ret.Span, Msg.Diag("AUR2641", "fn", _currentReturnType));
+                }
                 break;
 
             case UsingStmtNode us:
@@ -879,6 +914,40 @@ public sealed class SemanticAnalyzer
         return null;
     }
 
+    /// <summary>Walk Aura-defined type's BaseTypes to see if it ultimately derives from Exception.</summary>
+    private bool InheritsFromException(TypeSymbol sym, ResolutionContext ctx)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<TypeSymbol>();
+        queue.Enqueue(sym);
+
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            if (!visited.Add(cur.FullName)) continue;
+
+            foreach (var bt in cur.BaseTypes)
+            {
+                var resolved = _typeResolver!.Resolve(bt, ctx);
+                if (resolved is not TypeRef.Named n) continue;
+
+                // Check if base is Exception via .NET reflection
+                var dotnet = TryResolveDotNetType(n.FullName);
+                if (dotnet != null && typeof(Exception).IsAssignableFrom(dotnet))
+                    return true;
+
+                // Check known name
+                if (n.FullName is "System.Exception" or "Exception")
+                    return true;
+
+                // Recurse into Aura-defined base
+                if (_index.Types.TryGetValue(n.FullName, out var baseSym))
+                    queue.Enqueue(baseSym);
+            }
+        }
+        return false;
+    }
+
     private void AnalyzeCatch(CatchClauseNode c, ResolutionContext ctx)
     {
         PushScope();
@@ -894,13 +963,29 @@ public sealed class SemanticAnalyzer
         if (c.Type != null)
         {
             var t = _typeResolver!.Resolve(c.Type, ctx);
-            // v1：只能做形状检查：名字以 Exception 结尾或为 Exception
             if (t is TypeRef.Named n)
             {
-                var parts = n.FullName.Split('.');
-                var last = parts.Length > 0 ? parts[^1] : n.FullName;
-                if (last != "Exception" && !last.EndsWith("Exception", StringComparison.Ordinal))
-                    Emit("AUR2630", DiagnosticSeverity.Error, c.Span, Msg.Diag("AUR2630", n.FullName));
+                // First try .NET reflection-based check
+                var dotnetType = TryResolveDotNetType(n.FullName);
+                if (dotnetType != null)
+                {
+                    if (!typeof(Exception).IsAssignableFrom(dotnetType))
+                        Emit("AUR2630", DiagnosticSeverity.Error, c.Span, Msg.Diag("AUR2630", n.FullName));
+                }
+                else if (_index.Types.TryGetValue(n.FullName, out var catchSym))
+                {
+                    // Aura-defined type: walk BaseTypes looking for Exception
+                    if (!InheritsFromException(catchSym, ctx))
+                        Emit("AUR2630", DiagnosticSeverity.Error, c.Span, Msg.Diag("AUR2630", n.FullName));
+                }
+                else
+                {
+                    // Fallback: name-based heuristic for unresolved types
+                    var parts = n.FullName.Split('.');
+                    var last = parts.Length > 0 ? parts[^1] : n.FullName;
+                    if (last != "Exception" && !last.EndsWith("Exception", StringComparison.Ordinal))
+                        Emit("AUR2630", DiagnosticSeverity.Error, c.Span, Msg.Diag("AUR2630", n.FullName));
+                }
             }
         }
 
@@ -1066,12 +1151,15 @@ public sealed class SemanticAnalyzer
                 {
                     AnalyzeArgument(a, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
                 }
-                AnalyzeExpr(call.Callee, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
-                return TypeRef.Unknown;
+                var calleeType = AnalyzeExpr(call.Callee, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
+                // If callee resolved to a known type (e.g., from MemberAccess), use it;
+                // otherwise try symbol lookup for simple name calls
+                if (calleeType != TypeRef.Unknown) return calleeType;
+                return TryResolveCallReturnType(call, ctx);
 
             case MemberAccessExprNode ma:
-                AnalyzeExpr(ma.Target, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
-                return TypeRef.Unknown;
+                var targetType = AnalyzeExpr(ma.Target, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
+                return TryResolveMemberType(targetType, ma.Member.Text, ctx);
 
             case IndexExprNode ix:
                 AnalyzeExpr(ix.Target, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
@@ -1125,7 +1213,7 @@ public sealed class SemanticAnalyzer
                 return new TypeRef.Function(lam2.Parameters.Select(p => p.Type != null ? _typeResolver!.Resolve(p.Type, ctx) : TypeRef.Unknown).ToList(), bodyT);
 
             case SwitchExprNode sw:
-                AnalyzeExpr(sw.Value, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
+                var switchValType = AnalyzeExpr(sw.Value, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
 
                 TypeRef? acc = null;
                 var hasDiscard = false;
@@ -1149,7 +1237,28 @@ public sealed class SemanticAnalyzer
                 }
 
                 if (!hasDiscard)
-                    Emit("AUR2511", DiagnosticSeverity.Error, sw.Span, Msg.Diag("AUR2511"));
+                {
+                    // Check if switch value is an enum and all members are covered
+                    var enumExhaustive = false;
+                    if (switchValType is TypeRef.Named enumRef && enumRef.ResolvedKind == TypeKind.Enum
+                        && _index.Types.TryGetValue(enumRef.FullName, out var enumSym) && enumSym.EnumDecl != null)
+                    {
+                        var memberNames = new HashSet<string>(enumSym.EnumDecl.Members.Select(m => m.Name.Text), StringComparer.Ordinal);
+                        foreach (var arm in sw.Arms)
+                        {
+                            if (arm.Pattern is ConstantPatternNode { Value: ConstNameNode cn })
+                            {
+                                // Last part is the member name (e.g., "Idle" from "State.Idle")
+                                var memberName = cn.Name.Parts[^1].Text;
+                                memberNames.Remove(memberName);
+                            }
+                        }
+                        enumExhaustive = memberNames.Count == 0;
+                    }
+
+                    if (!enumExhaustive)
+                        Emit("AUR2511", DiagnosticSeverity.Error, sw.Span, Msg.Diag("AUR2511"));
+                }
 
                 if (acc == null) return TypeRef.Unknown;
                 if (acc == TypeRef.Unknown)
@@ -1346,11 +1455,94 @@ public sealed class SemanticAnalyzer
         return TypeRef.Unknown;
     }
 
+    /// <summary>v1 assignability check: exact match, numeric widening, nullable, and object target.</summary>
+    private bool IsAssignableTo(TypeRef source, TypeRef target)
+    {
+        if (Equals(source, target)) return true;
+        if (target == TypeRef.Unknown || source == TypeRef.Unknown) return true;
+
+        // null assignable to nullable
+        if (source == TypeRef.Null && target is TypeRef.Nullable) return true;
+
+        // T assignable to T?
+        if (target is TypeRef.Nullable nt && Equals(source, nt.Inner)) return true;
+
+        // numeric widening: i32 -> i64, i32 -> f64, i64 -> f64, f32 -> f64
+        if (source is TypeRef.Builtin sb && target is TypeRef.Builtin tb)
+        {
+            return (sb.Kind, tb.Kind) switch
+            {
+                (BuiltinTypeKind.I32, BuiltinTypeKind.I64) => true,
+                (BuiltinTypeKind.I32, BuiltinTypeKind.F64) => true,
+                (BuiltinTypeKind.I64, BuiltinTypeKind.F64) => true,
+                (BuiltinTypeKind.F32, BuiltinTypeKind.F64) => true,
+                _ => false
+            };
+        }
+
+        // anything assignable to object
+        if (target is TypeRef.Named { FullName: "object" or "System.Object" }) return true;
+
+        return false;
+    }
+
     private void RequireBool(TypeRef t, SourceSpan span, string message)
     {
         if (t is TypeRef.Builtin b && b.Kind == BuiltinTypeKind.Bool) return;
         if (t == TypeRef.Unknown) return; // v1：不强报
         Emit("AUR2601", DiagnosticSeverity.Error, span, Msg.Diag("AUR2601", message, t));
+    }
+
+    /// <summary>Try to resolve the return type of a simple name call (foo()) by looking up in SymbolIndex.</summary>
+    private TypeRef TryResolveCallReturnType(CallExprNode call, ResolutionContext ctx)
+    {
+        if (call.Callee is not NameExprNode nameExpr) return TypeRef.Unknown;
+
+        var funcName = nameExpr.Name.Text;
+
+        // Look in the current type first
+        if (_currentTypeName != null && _index.Types.TryGetValue(_currentTypeName, out var typeSym)
+            && typeSym.Functions.TryGetValue(funcName, out var fns) && fns.Count > 0)
+            return ResolveFunctionReturnType(fns[0], ctx);
+
+        // Look in all types
+        foreach (var sym in _index.Types.Values)
+        {
+            if (sym.Functions.TryGetValue(funcName, out var fns2) && fns2.Count > 0)
+                return ResolveFunctionReturnType(fns2[0], ctx);
+        }
+
+        return TypeRef.Unknown;
+    }
+
+    private TypeRef ResolveFunctionReturnType(FunctionDeclNode fn, ResolutionContext ctx)
+    {
+        return fn.ReturnSpec switch
+        {
+            ReturnTypeSpecNode r => _typeResolver!.Resolve(r.ReturnType, ctx),
+            _ => TypeRef.Unknown
+        };
+    }
+
+    /// <summary>Try to resolve the type of a member (property or single-return function) on a known type.</summary>
+    private TypeRef TryResolveMemberType(TypeRef targetType, string memberName, ResolutionContext ctx)
+    {
+        if (targetType is not TypeRef.Named tn) return TypeRef.Unknown;
+        if (!_index.Types.TryGetValue(tn.FullName, out var sym)) return TypeRef.Unknown;
+
+        // Check properties first
+        if (sym.Properties.TryGetValue(memberName, out var prop))
+            return _typeResolver!.Resolve(prop.Type, ctx);
+
+        // Check fields
+        if (sym.Fields.TryGetValue(memberName, out var field) && field.Type != null)
+            return _typeResolver!.Resolve(field.Type, ctx);
+
+        // Check functions (return a function type or the return type for later call resolution)
+        if (sym.Functions.TryGetValue(memberName, out var fns) && fns.Count > 0)
+            return ResolveFunctionReturnType(fns[0], ctx);
+
+        return TypeRef.Unknown;
     }
 
     /* =========================
