@@ -7,6 +7,9 @@
 *.pdb
 
 
+# Auto-generated sample host projects (created by dotnet publish)
+samples/*Host/
+
 vscode-aura/node_modules/
 vscode-aura/out/
 .vscode/
