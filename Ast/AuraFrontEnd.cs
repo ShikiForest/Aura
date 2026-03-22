@@ -18,8 +18,19 @@ public static class AuraFrontEnd
 
         var tree = parser.compilationUnit();
 
-        var builder = new AuraAstBuilder();
-        var ast = builder.BuildCompilationUnit(tree);
+        CompilationUnitNode? ast = null;
+        try
+        {
+            var builder = new AuraAstBuilder();
+            ast = builder.BuildCompilationUnit(tree);
+        }
+        catch (Exception ex)
+        {
+            // Convert AST builder exceptions into diagnostics instead of crashing the CLI
+            var pos = new SourcePos(0, 1, 0);
+            var span = new SourceSpan(pos, pos);
+            diags.Add(new Diagnostic(span, $"Internal error during AST construction: {ex.Message}"));
+        }
 
         return new ParseResult<CompilationUnitNode>(ast, diags);
     }

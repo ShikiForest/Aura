@@ -173,10 +173,19 @@ internal static class Program
             return 5;
         }}
 
+        // Propagate exit codes from user code
+        if (result is Task<int> taskInt)
+        {{
+            return taskInt.GetAwaiter().GetResult();
+        }}
         if (result is Task t)
         {{
-            // It's fine to wait here: this is the program entrypoint.
             t.GetAwaiter().GetResult();
+            return 0;
+        }}
+        if (result is int exitCode)
+        {{
+            return exitCode;
         }}
 
         return 0;

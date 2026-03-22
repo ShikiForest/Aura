@@ -113,7 +113,10 @@ internal static class CompileCommand
             Console.WriteLine();
             ConsoleWriter.Verbose(true, "[3] " + Msg.Cli("lowering_skipped"));
             ConsoleWriter.DiagnosticWarning("  " + Msg.Cli("nolower_warning"));
-            loweredAst = ast;
+
+            // Stop before codegen — un-lowered AST would produce incorrect output
+            totalSw.Stop();
+            return new CompileResult(true, null, errors, warnings, totalSw.Elapsed);
         }
         else
         {
