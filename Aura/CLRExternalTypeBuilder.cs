@@ -3,15 +3,37 @@ using System.Reflection;
 namespace Aura;
 
 /// <summary>
-/// Builder for CLR external types. Uses reflection to construct instances.
-/// This is the only type in Aura that is allowed to use normal <c>new</c>.
+/// Builder for CLR external types. Accepts a <see cref="CLRConstructorArgBuilder"/>
+/// to define constructor arguments, then uses reflection to construct instances.
+///
+/// <para>Chain: CLRConstructorArgBuilder → CLRExternalTypeBuilder&lt;T&gt; → T</para>
+///
+/// <code>
+/// class MyFormArgs : CLRConstructorArgBuilder {
+///     property text: string
+/// }
+/// let args = new MyFormArgs(text: "Hello")
+/// let builder = new CLRExternalTypeBuilder&lt;Form&gt;(args: args)
+/// let form = new(builder)
+/// </code>
 /// </summary>
 /// <typeparam name="T">The CLR type to construct.</typeparam>
 public class CLRExternalTypeBuilder<T> : IBuilder<T>
 {
+    private readonly CLRConstructorArgBuilder? _argBuilder;
+
+    public CLRExternalTypeBuilder()
+    {
+    }
+
+    public CLRExternalTypeBuilder(CLRConstructorArgBuilder argBuilder)
+    {
+        _argBuilder = argBuilder;
+    }
+
     public Dictionary<string, object> GetConstructorDictionary()
     {
-        return new Dictionary<string, object>();
+        return _argBuilder?.GetConstructorDictionary() ?? new Dictionary<string, object>();
     }
 
     public T Build(Dictionary<string, object> args)

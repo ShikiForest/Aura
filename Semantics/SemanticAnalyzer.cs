@@ -1158,19 +1158,30 @@ public sealed class SemanticAnalyzer
             case NewExprNode ne:
                 // Resolve the target type
                 var nt = _typeResolver!.Resolve(ne.TypeRef, ctx);
+                var targetName = ne.TypeRef is NamedTypeNode ntn ? ntn.Name.ToString() : null;
                 if (nt is TypeRef.Named ntt)
                 {
                     if (ntt.ResolvedKind is TypeKind.Trait or TypeKind.Enum or TypeKind.Window)
                         Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.kind", ntt.ResolvedKind, ntt.FullName));
                 }
 
-                // Builder constraint: normal new on CLR external types is ONLY allowed inside CLRExternalTypeBuilder.
-                // Aura-defined class/struct new (named-arg property init) remains allowed.
-                if (nt is TypeRef.Named ntt2 && ntt2.ResolvedKind == TypeKind.External
-                    && _currentTypeName != "CLRExternalTypeBuilder")
-                {
+                // ── Builder constraints ──────────────────────────────────────
+                //
+                // 1. VoidBuilder is the ONLY type that can be new() with zero args
+                //    (the bootstrap for the entire builder system).
+                // 2. CLR external types: new forbidden — must use builder chain.
+                // 3. Aura-defined types: new with named args (property init) allowed.
+                //    Zero-arg new A() is sugar for new A(VoidBuilder()).
+
+                bool isVoidBuilder = targetName == "VoidBuilder";
+
+                // Rule 1: zero-arg new() only for VoidBuilder
+                if (ne.Args.Count == 0 && !isVoidBuilder)
+                    Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.noarg"));
+
+                // Rule 2: CLR external types — new forbidden (use builder chain)
+                if (nt is TypeRef.Named ntt2 && ntt2.ResolvedKind == TypeKind.External && !isVoidBuilder)
                     Emit("AUR4032", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4032"));
-                }
 
                 foreach (var a in ne.Args)
                     AnalyzeArgument(a, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
