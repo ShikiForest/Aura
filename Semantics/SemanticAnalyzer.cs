@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using AuraLang.Ast;
 using AuraLang.I18n;
 
@@ -35,7 +36,7 @@ public sealed class SemanticAnalyzer
         // Pass1：收集 declarations + imports
         CollectCompilationUnit(cu);
 
-        _typeResolver = new TypeResolver(_index);
+        _typeResolver = new TypeResolver(_index, _diags);
 
         // Pass2：架构约束与类型级检查
         foreach (var t in _index.AllTypes())
@@ -1069,6 +1070,12 @@ public sealed class SemanticAnalyzer
                 case ListPatternNode lp:
                     foreach (var x in lp.Items) Walk(x);
                     break;
+                // Leaf patterns that don't introduce variables — walk explicitly for safety
+                case DiscardPatternNode:
+                case ConstantPatternNode:
+                case TypePatternNode:
+                case RelationalPatternNode:
+                    break;
                 default:
                     break;
             }
@@ -1309,6 +1316,19 @@ public sealed class SemanticAnalyzer
                 // Result type is object (runtime-determined by the builder)
                 return new TypeRef.Named("object", TypeKind.External);
 
+            case AsExprNode asExpr:
+                AnalyzeExpr(asExpr.Expr, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
+                return _typeResolver!.Resolve(asExpr.Type, ctx);
+
+            case ListLiteralExprNode listLit:
+                foreach (var item in listLit.Items)
+                    AnalyzeExpr(item, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
+                return new TypeRef.Named("System.Collections.Generic.List", TypeKind.External);
+
+            case IsPatternExprNode isPat:
+                AnalyzeExpr(isPat.Expr, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
+                return new TypeRef.Builtin(BuiltinTypeKind.Bool);
+
             default:
                 // 其他表达式：尽量递归其子表达式
                 return InferExprType(expr, ctx);
@@ -1536,21 +1556,61 @@ public sealed class SemanticAnalyzer
     private TypeRef TryResolveMemberType(TypeRef targetType, string memberName, ResolutionContext ctx)
     {
         if (targetType is not TypeRef.Named tn) return TypeRef.Unknown;
-        if (!_index.Types.TryGetValue(tn.FullName, out var sym)) return TypeRef.Unknown;
 
-        // Check properties first
-        if (sym.Properties.TryGetValue(memberName, out var prop))
-            return _typeResolver!.Resolve(prop.Type, ctx);
+        // Aura-defined types: use symbol index
+        if (_index.Types.TryGetValue(tn.FullName, out var sym))
+        {
+            // Check properties first
+            if (sym.Properties.TryGetValue(memberName, out var prop))
+                return _typeResolver!.Resolve(prop.Type, ctx);
 
-        // Check fields
-        if (sym.Fields.TryGetValue(memberName, out var field) && field.Type != null)
-            return _typeResolver!.Resolve(field.Type, ctx);
+            // Check fields
+            if (sym.Fields.TryGetValue(memberName, out var field) && field.Type != null)
+                return _typeResolver!.Resolve(field.Type, ctx);
 
-        // Check functions (return a function type or the return type for later call resolution)
-        if (sym.Functions.TryGetValue(memberName, out var fns) && fns.Count > 0)
-            return ResolveFunctionReturnType(fns[0], ctx);
+            // Check functions (return a function type or the return type for later call resolution)
+            if (sym.Functions.TryGetValue(memberName, out var fns) && fns.Count > 0)
+                return ResolveFunctionReturnType(fns[0], ctx);
+
+            return TypeRef.Unknown;
+        }
+
+        // CLR external types: use reflection
+        if (tn.ResolvedKind == TypeKind.External)
+        {
+            var dotnetType = TryResolveDotNetType(tn.FullName);
+            if (dotnetType is not null)
+            {
+                var pi = dotnetType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+                if (pi is not null)
+                    return MapClrTypeToTypeRef(pi.PropertyType);
+
+                var fi = dotnetType.GetField(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+                if (fi is not null)
+                    return MapClrTypeToTypeRef(fi.FieldType);
+
+                // Check methods (return type of first matching method)
+                var mi = dotnetType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                    .FirstOrDefault(m => m.Name == memberName);
+                if (mi is not null)
+                    return MapClrTypeToTypeRef(mi.ReturnType);
+            }
+        }
 
         return TypeRef.Unknown;
+    }
+
+    private static TypeRef MapClrTypeToTypeRef(Type clrType)
+    {
+        if (clrType == typeof(int)) return new TypeRef.Builtin(BuiltinTypeKind.I32);
+        if (clrType == typeof(long)) return new TypeRef.Builtin(BuiltinTypeKind.I64);
+        if (clrType == typeof(float)) return new TypeRef.Builtin(BuiltinTypeKind.F32);
+        if (clrType == typeof(double)) return new TypeRef.Builtin(BuiltinTypeKind.F64);
+        if (clrType == typeof(bool)) return new TypeRef.Builtin(BuiltinTypeKind.Bool);
+        if (clrType == typeof(string)) return new TypeRef.Builtin(BuiltinTypeKind.String);
+        if (clrType == typeof(char)) return new TypeRef.Builtin(BuiltinTypeKind.Char);
+        if (clrType == typeof(void)) return new TypeRef.Builtin(BuiltinTypeKind.Void);
+        return new TypeRef.Named(clrType.FullName ?? clrType.Name, TypeKind.External);
     }
 
     /* =========================

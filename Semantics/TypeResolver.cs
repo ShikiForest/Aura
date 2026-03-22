@@ -1,4 +1,5 @@
 using AuraLang.Ast;
+using AuraLang.I18n;
 
 namespace AuraLang.Semantics;
 
@@ -6,8 +7,13 @@ namespace AuraLang.Semantics;
 public sealed class TypeResolver
 {
     private readonly SymbolIndex _index;
+    private readonly List<SemanticDiagnostic> _diags;
 
-    public TypeResolver(SymbolIndex index) => _index = index;
+    public TypeResolver(SymbolIndex index, List<SemanticDiagnostic> diags)
+    {
+        _index = index;
+        _diags = diags;
+    }
 
     public TypeRef Resolve(TypeNode node, ResolutionContext ctx)
     {
@@ -27,6 +33,14 @@ public sealed class TypeResolver
     private TypeRef ResolveNamed(NamedTypeNode nt, ResolutionContext ctx)
     {
         var name = nt.Name.ToString();
+
+        // Warn if generic type arguments are provided but not yet resolved
+        if (nt.TypeArgs.Count > 0)
+        {
+            _diags.Add(new SemanticDiagnostic(
+                "AUR5003", DiagnosticSeverity.Warning, nt.Span,
+                Msg.Diag("AUR5003", name, nt.TypeArgs.Count)));
+        }
 
         // Fully-qualified name: check Aura index first, then CLR
         if (name.Contains('.'))

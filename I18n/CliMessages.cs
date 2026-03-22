@@ -166,6 +166,11 @@ public static class CliMessages
             "プロセスがコード {0} で終了しました",
             "进程以代码 {0} 退出");
 
+        Add("process_start_failed",
+            "Failed to start process: {0}",
+            "プロセスの起動に失敗しました: {0}",
+            "无法启动进程：{0}");
+
         // ── Verbose labels ─────────────────────────────────────────
         Add("label_source",
             "source",

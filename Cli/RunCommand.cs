@@ -110,7 +110,13 @@ internal static class RunCommand
             CreateNoWindow   = false,
         };
 
-        using var proc = Process.Start(psi)!;
+        var proc = Process.Start(psi);
+        if (proc is null)
+        {
+            ConsoleWriter.Error(Msg.Cli("process_start_failed", exePath));
+            return 1;
+        }
+        using var _ = proc;
         proc.WaitForExit();
 
         Console.WriteLine(new string('─', 60));

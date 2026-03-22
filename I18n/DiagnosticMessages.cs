@@ -296,6 +296,11 @@ public static class DiagnosticMessages
             "ジェネリック制約（where句）はまだサポートされていません。'{0}' の制約は効果がありません。",
             "泛型约束（where 子句）尚未支持。'{0}' 的约束不会生效。");
 
+        Add("AUR5003",
+            "Generic type arguments on '{0}' (arity {1}) are not yet resolved; type checking may be incomplete.",
+            "'{0}' のジェネリック型引数（{1}個）はまだ解決されません。型チェックが不完全になる可能性があります。",
+            "'{0}' 的泛型类型参数（{1}个）尚未解析；类型检查可能不完整。");
+
         // ── CG1xxx: Type resolution (codegen) ──────────────────────
         Add("CG1001",
             "Unknown type '{0}'",
@@ -533,6 +538,11 @@ public static class DiagnosticMessages
             "No derivable op properties found for '{0}'. derivateof will return null.",
             "'{0}' に derivable op プロパティが見つかりません。derivateof は null を返します。",
             "'{0}' 未找到可派生的 op 属性。derivateof 将返回 null。");
+
+        Add("CG5002",
+            "Bare catch block without type filter will silently swallow all exceptions.",
+            "型フィルターのないbare catchブロックはすべての例外を暗黙的に飲み込みます。",
+            "没有类型过滤器的 bare catch 块将静默吞掉所有异常。");
 
         Add("CG5105",
             "Could not infer generic type arguments for '{0}.{1}'; defaulting to object.",

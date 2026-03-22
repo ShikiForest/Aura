@@ -98,6 +98,37 @@ internal sealed partial class CecilEmitter
                 EmitBuilderNewExpr(builderNew);
                 break;
 
+            case IndexExprNode idx:
+                EmitIndexAccess(idx);
+                break;
+
+            case ListLiteralExprNode listLit:
+                EmitListLiteral(listLit);
+                break;
+
+            case AsExprNode asExpr:
+                EmitExpr(asExpr.Expr, expected: null);
+                var asTarget = ResolveType(_module, asExpr.Type, _imports, _userTypes, _genericContext, _diags, asExpr.Span);
+                _il.Append(_il.Create(OpCodes.Isinst, asTarget));
+                break;
+
+            case IsPatternExprNode isPat:
+                EmitExpr(isPat.Expr, expected: null);
+                if (isPat.Pattern is TypePatternNode tp)
+                {
+                    var checkType = ResolveType(_module, tp.Type, _imports, _userTypes, _genericContext, _diags, isPat.Span);
+                    _il.Append(_il.Create(OpCodes.Isinst, checkType));
+                    _il.Append(_il.Create(OpCodes.Ldnull));
+                    _il.Append(_il.Create(OpCodes.Cgt_Un));
+                }
+                else
+                {
+                    // Fallback for non-type patterns: emit true (pattern already matched by lowering)
+                    _il.Append(_il.Create(OpCodes.Pop));
+                    _il.Append(_il.Create(OpCodes.Ldc_I4_1));
+                }
+                break;
+
             default:
                 _diags.Add(new CodeGenDiagnostic(expr.Span, "CG3000", CodeGenSeverity.Error,
                     Msg.Diag("CG3000", expr.GetType().Name)));
@@ -1321,6 +1352,66 @@ private void EmitSeqExpr(SeqExprNode se, TypeReference expected)
         else
         {
             _il.Append(_il.Create(OpCodes.Castclass, toType));
+        }
+    }
+
+    private void EmitIndexAccess(IndexExprNode idx)
+    {
+        // Emit target[index] — use IList interface callvirt
+        EmitExpr(idx.Target, expected: null);
+        EmitExpr(idx.Index, expected: null);
+
+        var targetType = InferExprType(idx.Target);
+        // For arrays, use Ldelem_Ref; for others, call get_Item
+        if (targetType is Mono.Cecil.ArrayType)
+        {
+            _il.Append(_il.Create(OpCodes.Ldelem_Ref));
+        }
+        else
+        {
+            // Attempt to resolve get_Item on the target type
+            var mi = TryResolveMember(
+                new MemberAccessExprNode(idx.Span, idx.Target, new NameNode(idx.Span, "get_Item"), Array.Empty<TypeNode>()),
+                out _, out _, out _);
+            if (mi is MethodInfo m)
+            {
+                _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(m)));
+            }
+            else
+            {
+                // Fallback: try IList<T>.get_Item
+                var ilistGetItem = typeof(IList).GetMethod("get_Item");
+                if (ilistGetItem != null)
+                    _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(ilistGetItem)));
+                else
+                {
+                    _diags.Add(new CodeGenDiagnostic(idx.Span, "CG3000", CodeGenSeverity.Warning,
+                        Msg.Diag("CG3000", "IndexExprNode")));
+                    _il.Append(_il.Create(OpCodes.Pop));
+                    _il.Append(_il.Create(OpCodes.Pop));
+                    _il.Append(_il.Create(OpCodes.Ldnull));
+                }
+            }
+        }
+    }
+
+    private void EmitListLiteral(ListLiteralExprNode listLit)
+    {
+        // Emit: new List<object> { items... }
+        var listType = _module.ImportReference(typeof(System.Collections.Generic.List<object>));
+        var listCtor = _module.ImportReference(typeof(System.Collections.Generic.List<object>).GetConstructor(Type.EmptyTypes)!);
+        var addMethod = _module.ImportReference(typeof(System.Collections.Generic.List<object>).GetMethod("Add")!);
+
+        _il.Append(_il.Create(OpCodes.Newobj, listCtor));
+
+        foreach (var item in listLit.Items)
+        {
+            _il.Append(_il.Create(OpCodes.Dup));
+            EmitExpr(item, expected: _module.TypeSystem.Object);
+            var itemType = InferExprType(item);
+            if (itemType.IsValueType)
+                _il.Append(_il.Create(OpCodes.Box, itemType));
+            _il.Append(_il.Create(OpCodes.Callvirt, addMethod));
         }
     }
 }

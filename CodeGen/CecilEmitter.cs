@@ -437,6 +437,11 @@ internal sealed partial class CecilEmitter
                 ? _module.ImportReference(typeof(Exception))
                 : ResolveType(_module, c.Type, _imports, _userTypes, _genericContext, _diags, c.Span);
 
+            // Warn about bare catch blocks that swallow exceptions silently
+            if (c.Type is null)
+                _diags.Add(new CodeGenDiagnostic(c.Span, "CG5002", CodeGenSeverity.Warning,
+                    Msg.Diag("CG5002")));
+
             var exName = c.Name?.Text ?? FreshTempName("__aura_ex");
             var exVar = DeclareLocal(exName, catchType);
             _il.Append(_il.Create(OpCodes.Stloc, exVar));
