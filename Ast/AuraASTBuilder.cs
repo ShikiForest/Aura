@@ -836,6 +836,13 @@ public sealed class AuraAstBuilder
 
     private ExprNode BuildNew(AuraParser.NewExpressionContext ctx)
     {
+        // Builder-based new: new(expr) — no typeReference
+        if (ctx.typeReference() == null && ctx.expression() != null)
+        {
+            var builderExpr = BuildExpressionCore(ctx.expression());
+            return new BuilderNewExprNode(SpanFactory.From(ctx), builderExpr);
+        }
+
         var typeRef = BuildTypeReference(ctx.typeReference());
         var args = ctx.argumentList() != null ? BuildArguments(ctx.argumentList()) : Array.Empty<ArgumentNode>();
         return new NewExprNode(SpanFactory.From(ctx), typeRef, args);

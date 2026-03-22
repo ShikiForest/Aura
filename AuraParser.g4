@@ -468,7 +468,8 @@ primaryExpression
     ;
 
 newExpression
-    : NEW typeReference LPAREN argumentList? RPAREN
+    : NEW typeReference LPAREN argumentList? RPAREN   // normal new (restricted by compiler)
+    | NEW LPAREN expression RPAREN                     // builder new: new(builder)
     ;
 
 argumentList

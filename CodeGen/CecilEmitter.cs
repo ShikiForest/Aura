@@ -635,6 +635,9 @@ case BinaryExprNode b:
             case NewExprNode ne:
                 return ResolveType(_module, ne.TypeRef, _imports, _userTypes, _genericContext, _diags, ne.Span);
 
+            case BuilderNewExprNode:
+                return _module.TypeSystem.Object;
+
             default:
                 _diags.Add(new CodeGenDiagnostic(expr.Span, "CG2001", CodeGenSeverity.Warning,
                     Msg.Diag("CG2001.warn", expr.GetType().Name)));
@@ -763,6 +766,10 @@ private TypeReference InferAwaitResultType(TypeReference taskType, SourceSpan sp
 
             case NewExprNode newExpr:
                 EmitNewExpr(newExpr);
+                break;
+
+            case BuilderNewExprNode builderNew:
+                EmitBuilderNewExpr(builderNew);
                 break;
 
             default:
@@ -1599,6 +1606,42 @@ private void EmitAwaitUnary(UnaryExprNode u)
 
         _diags.Add(new CodeGenDiagnostic(n.Span, "CG3101", CodeGenSeverity.Error,
             Msg.Diag("CG3101.newexpr", n.TypeRef)));
+        _il.Append(_il.Create(OpCodes.Ldnull));
+    }
+
+    /// <summary>
+    /// Emits builder-based new: <c>new(builder)</c>
+    /// Calls builder.GetConstructorDictionary() then builder.Build(dict).
+    /// </summary>
+    private void EmitBuilderNewExpr(BuilderNewExprNode n)
+    {
+        // Emit the builder expression onto the stack
+        EmitExpr(n.Builder, expected: null);
+
+        // dup for the two calls: GetConstructorDictionary() then Build(dict)
+        _il.Append(_il.Create(OpCodes.Dup));
+
+        // Call GetConstructorDictionary() → returns Dictionary<string, object>
+        // We need to find the method on the IBuilder interface in userTypes
+        if (_userTypes.TryGetValue("IBuilder", out var ibuilderTd))
+        {
+            var getDictMethod = ibuilderTd.Methods.FirstOrDefault(m => m.Name == "GetConstructorDictionary");
+            var buildMethod = ibuilderTd.Methods.FirstOrDefault(m => m.Name == "Build");
+
+            if (getDictMethod is not null && buildMethod is not null)
+            {
+                _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(getDictMethod)));
+                // Stack: [builder, dict]
+                _il.Append(_il.Create(OpCodes.Callvirt, _module.ImportReference(buildMethod)));
+                // Stack: [result (object/T)]
+                return;
+            }
+        }
+
+        // Fallback: just pop and push null
+        _il.Append(_il.Create(OpCodes.Pop));
+        _diags.Add(new CodeGenDiagnostic(n.Span, "CG3110", CodeGenSeverity.Error,
+            Msg.Diag("CG3110")));
         _il.Append(_il.Create(OpCodes.Ldnull));
     }
 

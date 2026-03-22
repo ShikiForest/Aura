@@ -366,6 +366,9 @@ public sealed record ListLiteralExprNode(SourceSpan Span, IReadOnlyList<ExprNode
 
 public sealed record NewExprNode(SourceSpan Span, TypeNode TypeRef, IReadOnlyList<ArgumentNode> Args) : ExprNode(Span);
 
+/// <summary>Builder-based new: <c>new(builder)</c> — calls IBuilder.Build()</summary>
+public sealed record BuilderNewExprNode(SourceSpan Span, ExprNode Builder) : ExprNode(Span);
+
 public sealed record MemberAccessExprNode(SourceSpan Span, ExprNode Target, NameNode Member, IReadOnlyList<TypeNode> TypeArgs) : ExprNode(Span);
 
 public sealed record IndexExprNode(SourceSpan Span, ExprNode Target, ExprNode Index) : ExprNode(Span);

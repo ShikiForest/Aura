@@ -23,6 +23,7 @@ public sealed class SemanticAnalyzer
     // 当前分析上下文
     private LocalScope? _scope;
     private bool _inAsyncFunction;
+    private string? _currentTypeName;  // enclosing type name (for builder constraint)
 
     public SemanticResult Analyze(CompilationUnitNode cu)
     {
@@ -675,12 +676,15 @@ public sealed class SemanticAnalyzer
 
     private void AnalyzeTypeBodies(TypeDeclNode td, string ns)
     {
+        var prevType = _currentTypeName;
+        _currentTypeName = td.Name.Text;
         var ctx = new ResolutionContext(ns, GetImports(ns));
         foreach (var m in td.Members)
         {
             if (m is FunctionDeclNode fn)
                 AnalyzeFunction(fn, ctx);
         }
+        _currentTypeName = prevType;
     }
 
     private void AnalyzeFunction(FunctionDeclNode fn, ResolutionContext ctx)
@@ -1152,7 +1156,7 @@ public sealed class SemanticAnalyzer
                 return acc;
 
             case NewExprNode ne:
-                // 禁止 new trait/enum/window；禁止 new 无参（builder 约束的最小实现）
+                // Resolve the target type
                 var nt = _typeResolver!.Resolve(ne.TypeRef, ctx);
                 if (nt is TypeRef.Named ntt)
                 {
@@ -1160,12 +1164,23 @@ public sealed class SemanticAnalyzer
                         Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.kind", ntt.ResolvedKind, ntt.FullName));
                 }
 
-                if (ne.Args.Count == 0)
-                    Emit("AUR4031", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4031.noarg"));
+                // Builder constraint: normal new on CLR external types is ONLY allowed inside CLRExternalTypeBuilder.
+                // Aura-defined class/struct new (named-arg property init) remains allowed.
+                if (nt is TypeRef.Named ntt2 && ntt2.ResolvedKind == TypeKind.External
+                    && _currentTypeName != "CLRExternalTypeBuilder")
+                {
+                    Emit("AUR4032", DiagnosticSeverity.Error, ne.Span, Msg.Diag("AUR4032"));
+                }
 
                 foreach (var a in ne.Args)
                     AnalyzeArgument(a, ctx, allowPlaceholder, inPredicateIndex, pipeStageIndex);
                 return nt;
+
+            case BuilderNewExprNode bne:
+                // new(builder) — builder-based instantiation: always allowed
+                AnalyzeExpr(bne.Builder, ctx, allowPlaceholder: false, inPredicateIndex: false, pipeStageIndex: -1);
+                // Result type is object (runtime-determined by the builder)
+                return new TypeRef.Named("object", TypeKind.External);
 
             default:
                 // 其他表达式：尽量递归其子表达式

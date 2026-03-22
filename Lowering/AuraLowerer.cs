@@ -1668,6 +1668,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
             BinaryExprNode b => new BinaryExprNode(b.Span, b.Op, LowerExpr(b.Left), LowerExpr(b.Right)),
             UnaryExprNode u => u.Op == "derivateof" ? LowerDerivateof(u) : new UnaryExprNode(u.Span, u.Op, LowerExpr(u.Operand)),
             NewExprNode n => LowerNewExpr(n),
+            BuilderNewExprNode bn => new BuilderNewExprNode(bn.Span, LowerExpr(bn.Builder)),
             IsPatternExprNode ip => new IsPatternExprNode(ip.Span, LowerExpr(ip.Expr), LowerPatternNode(ip.Pattern)),
             AsExprNode a => new AsExprNode(a.Span, LowerExpr(a.Expr), a.Type),
             InterpolatedStringExprNode s => new InterpolatedStringExprNode(s.Span, s.Parts.Select(LowerInterpPart).ToList()),

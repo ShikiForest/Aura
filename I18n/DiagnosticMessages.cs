@@ -185,6 +185,11 @@ public static class DiagnosticMessages
             "引数なし new() は Aura では禁止されています: ビルダーを使用してインスタンス化してください（最低1つのビルダー引数が必要）。",
             "Aura 禁止无参 new()：实例化必须通过 builder（至少传入 builder 参数）");
 
+        Add("AUR4032",
+            "Normal 'new Type(...)' is forbidden in Aura. Use 'new(builder)' with an IBuilder instance, or use CLRExternalTypeBuilder<T> for CLR types.",
+            "通常の 'new Type(...)' は Aura では禁止されています。IBuilder インスタンスによる 'new(builder)' を使用するか、CLR 型には CLRExternalTypeBuilder<T> を使用してください。",
+            "Aura 禁止普通 'new Type(...)'。请使用 'new(builder)' 配合 IBuilder 实例，或使用 CLRExternalTypeBuilder<T> 处理 CLR 类型。");
+
         Add("AUR4050",
             "User-defined constructors are not allowed in Aura. Remove 'fn new(...)' from '{0}'. Use [BuildMe] with a builder class instead.",
             "Aura ではユーザー定義コンストラクタは禁止されています。'{0}' から 'fn new(...)' を削除し、[BuildMe] とビルダークラスを使用してください。",
@@ -422,6 +427,11 @@ public static class DiagnosticMessages
             "??= on value types not supported in codegen v3.",
             "codegen v3 では値型に対する ??= はサポートされていません。",
             "codegen v3 不支持对值类型使用 ??=。");
+
+        Add("CG3110",
+            "Failed to emit builder-based new(builder): IBuilder interface not found in output module.",
+            "ビルダーベースの new(builder) の出力に失敗しました: IBuilder インターフェースが出力モジュールに見つかりません。",
+            "无法生成 builder 形式的 new(builder)：输出模块中未找到 IBuilder 接口。");
 
         Add("CG3200",
             "Cannot resolve member access: {0}",
