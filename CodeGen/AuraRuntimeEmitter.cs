@@ -535,4 +535,106 @@ public static class AuraRuntimeEmitter
         auraModule.NestedTypes.Add(td);
         userTypes["CLRExternalTypeBuilder"] = td;
     }
+
+    // ── ICaster<TIn, TOut> interface ────────────────────────────────────────
+
+    /// <summary>
+    /// Emits the ICaster&lt;TIn, TOut&gt; interface into the output module.
+    /// <code>
+    /// interface ICaster`2&lt;TIn, TOut&gt; {
+    ///     TOut Cast(TIn obj);
+    /// }
+    /// </code>
+    /// </summary>
+    public static void EmitICaster(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("ICaster"))
+            return;
+
+        var iface = new TypeDefinition("", "ICaster`2",
+            TypeAttributes.NestedPublic | TypeAttributes.Interface | TypeAttributes.Abstract,
+            module.TypeSystem.Object);
+
+        var genTIn = new GenericParameter("TIn", iface);
+        var genTOut = new GenericParameter("TOut", iface);
+        iface.GenericParameters.Add(genTIn);
+        iface.GenericParameters.Add(genTOut);
+
+        // TOut Cast(TIn obj)
+        var cast = new MethodDefinition("Cast",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Abstract | MethodAttributes.Virtual,
+            genTOut);
+        cast.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, genTIn));
+        iface.Methods.Add(cast);
+
+        auraModule.NestedTypes.Add(iface);
+        userTypes["ICaster"] = iface;
+    }
+
+    // ── Morph extension method ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits a static helper class with the Morph extension method:
+    /// <code>
+    /// static class CasterExtensions {
+    ///     static TOut Morph&lt;TIn, TOut&gt;(TIn obj, ICaster&lt;TIn, TOut&gt; caster)
+    ///         => caster.Cast(obj);
+    /// }
+    /// </code>
+    /// In Aura this becomes: obj.morph(caster)
+    /// </summary>
+    public static void EmitMorphExtension(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("CasterExtensions"))
+            return;
+
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd))
+            return;
+
+        var td = new TypeDefinition("", "CasterExtensions",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.Abstract | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        // static TOut Morph<TIn, TOut>(TIn obj, ICaster<TIn, TOut> caster)
+        var morph = new MethodDefinition("Morph",
+            MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.HideBySig,
+            module.TypeSystem.Object); // return type replaced below
+
+        var mTIn = new GenericParameter("TIn", morph);
+        var mTOut = new GenericParameter("TOut", morph);
+        morph.GenericParameters.Add(mTIn);
+        morph.GenericParameters.Add(mTOut);
+        morph.ReturnType = mTOut;
+
+        // Parameter 1: TIn obj
+        morph.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, mTIn));
+
+        // Parameter 2: ICaster<TIn, TOut> caster
+        var icasterInst = new GenericInstanceType(icasterTd)
+        {
+            GenericArguments = { mTIn, mTOut }
+        };
+        morph.Parameters.Add(new ParameterDefinition("caster", ParameterAttributes.None, icasterInst));
+
+        td.Methods.Add(morph);
+        {
+            var il = morph.Body.GetILProcessor();
+
+            // Resolve ICaster<TIn, TOut>.Cast method
+            var castMethodRef = new MethodReference("Cast", mTOut, icasterInst)
+            {
+                HasThis = true
+            };
+            castMethodRef.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, mTIn));
+
+            // return caster.Cast(obj)
+            il.Append(il.Create(OpCodes.Ldarg_1)); // caster
+            il.Append(il.Create(OpCodes.Ldarg_0)); // obj
+            il.Append(il.Create(OpCodes.Callvirt, castMethodRef));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["CasterExtensions"] = td;
+    }
 }

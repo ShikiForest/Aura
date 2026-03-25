@@ -83,6 +83,8 @@ public sealed class AuraCecilCodeGenerator
         AuraRuntimeEmitter.EmitVoidBuilder(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitCLRConstructorArgBuilder(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitCLRExternalTypeBuilder(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitICaster(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitMorphExtension(module, auraModule, userTypes);
 
         CreateTypeStubs(module, auraModule, ast, userTypes, astTypeNodes, windowNodes);
 
