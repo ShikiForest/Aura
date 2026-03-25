@@ -790,7 +790,14 @@ public static class AuraRuntimeEmitter
 
     /// <summary>
     /// Emits BytesCaster&lt;T&gt; : ICaster&lt;T, byte[]&gt;.
-    /// Cast(obj) serializes T to UTF-8 JSON bytes via JsonSerializer.SerializeToUtf8Bytes.
+    /// Adapter: wraps an inner ICaster&lt;T, string&gt; and converts the result to UTF-8 bytes.
+    /// <code>
+    /// class BytesCaster`1&lt;T&gt; : ICaster&lt;T, byte[]&gt; {
+    ///     private ICaster&lt;T, string&gt; _inner;
+    ///     .ctor(ICaster&lt;T, string&gt; caster) { _inner = caster; }
+    ///     byte[] Cast(T obj) => Encoding.UTF8.GetBytes(_inner.Cast(obj));
+    /// }
+    /// </code>
     /// </summary>
     public static void EmitBytesCaster(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
     {
@@ -809,12 +816,32 @@ public static class AuraRuntimeEmitter
         td.GenericParameters.Add(genT);
 
         // Implement ICaster<T, byte[]>
-        var icasterRef = new GenericInstanceType(icasterTd) { GenericArguments = { genT, byteArrayType } };
-        td.Interfaces.Add(new InterfaceImplementation(icasterRef));
+        var icasterOutRef = new GenericInstanceType(icasterTd) { GenericArguments = { genT, byteArrayType } };
+        td.Interfaces.Add(new InterfaceImplementation(icasterOutRef));
 
-        EmitDefaultCtor(module, td);
+        // Field: private ICaster<T, string> _inner
+        var icasterInnerRef = new GenericInstanceType(icasterTd) { GenericArguments = { genT, module.TypeSystem.String } };
+        var innerField = new FieldDefinition("_inner", FieldAttributes.Private, icasterInnerRef);
+        td.Fields.Add(innerField);
 
-        // byte[] Cast(T obj)
+        // .ctor(ICaster<T, string> caster) { base(); _inner = caster; }
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        ctor.Parameters.Add(new ParameterDefinition("caster", ParameterAttributes.None, icasterInnerRef));
+        td.Methods.Add(ctor);
+        {
+            var il = ctor.Body.GetILProcessor();
+            var objCtor = module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, objCtor));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Stfld, innerField));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        // byte[] Cast(T obj) => Encoding.UTF8.GetBytes(_inner.Cast(obj))
         var cast = new MethodDefinition("Cast",
             MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
             byteArrayType);
@@ -823,26 +850,39 @@ public static class AuraRuntimeEmitter
         {
             var il = cast.Body.GetILProcessor();
 
-            // return JsonSerializer.SerializeToUtf8Bytes(obj)
-            var jsonSerializerType = typeof(System.Text.Json.JsonSerializer);
-            var serializeMethod = module.ImportReference(
-                jsonSerializerType.GetMethod("SerializeToUtf8Bytes",
-                    new[] { typeof(object), typeof(Type), typeof(System.Text.Json.JsonSerializerOptions) })
-                ?? jsonSerializerType.GetMethod("SerializeToUtf8Bytes",
-                    new[] { typeof(object), typeof(System.Text.Json.JsonSerializerOptions) })!);
+            // Resolve ICaster<T, string>.Cast method reference
+            var innerCastRef = new MethodReference("Cast", module.TypeSystem.String, icasterInnerRef) { HasThis = true };
+            innerCastRef.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, genT));
 
-            // Use the simple overload: SerializeToUtf8Bytes(object, Type)
-            var simpleSerialize = module.ImportReference(
-                jsonSerializerType.GetMethod("SerializeToUtf8Bytes",
-                    new[] { typeof(object), typeof(Type), typeof(System.Text.Json.JsonSerializerOptions) })!);
-            var getTypeFromHandle = module.ImportReference(typeof(Type).GetMethod("GetTypeFromHandle")!);
+            // string str = _inner.Cast(obj)
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldfld, innerField));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Callvirt, innerCastRef));
 
-            il.Append(il.Create(OpCodes.Ldarg_1));         // obj
-            il.Append(il.Create(OpCodes.Box, genT));        // box to object
-            il.Append(il.Create(OpCodes.Ldtoken, genT));    // typeof(T)
-            il.Append(il.Create(OpCodes.Call, getTypeFromHandle));
-            il.Append(il.Create(OpCodes.Ldnull));           // options = null
-            il.Append(il.Create(OpCodes.Call, simpleSerialize));
+            // return Encoding.UTF8.GetBytes(str)
+            var getUtf8 = module.ImportReference(typeof(System.Text.Encoding).GetProperty("UTF8")!.GetGetMethod()!);
+            var getBytes = module.ImportReference(typeof(System.Text.Encoding).GetMethod("GetBytes", new[] { typeof(string) })!);
+            il.Append(il.Create(OpCodes.Call, getUtf8));
+            // stack: str, Encoding  — need to swap. Use a local.
+            // Actually: GetBytes is instance method on Encoding. We need Encoding on stack first.
+            // Let me restructure:
+            il.Body.Instructions.Clear();
+
+            cast.Body.InitLocals = true;
+            cast.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String)); // loc0: str
+
+            // string str = _inner.Cast(obj)
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldfld, innerField));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Callvirt, innerCastRef));
+            il.Append(il.Create(OpCodes.Stloc_0));
+
+            // return Encoding.UTF8.GetBytes(str)
+            il.Append(il.Create(OpCodes.Call, getUtf8));     // Encoding.UTF8
+            il.Append(il.Create(OpCodes.Ldloc_0));           // str
+            il.Append(il.Create(OpCodes.Callvirt, getBytes)); // .GetBytes(str)
             il.Append(il.Create(OpCodes.Ret));
         }
 
@@ -854,7 +894,14 @@ public static class AuraRuntimeEmitter
 
     /// <summary>
     /// Emits BytesParser&lt;T&gt; : ICaster&lt;byte[], T&gt;.
-    /// Cast(bytes) deserializes UTF-8 JSON bytes to T via JsonSerializer.Deserialize.
+    /// Adapter: converts byte[] to string via UTF-8, then delegates to inner ICaster&lt;string, T&gt;.
+    /// <code>
+    /// class BytesParser`1&lt;T&gt; : ICaster&lt;byte[], T&gt; {
+    ///     private ICaster&lt;string, T&gt; _inner;
+    ///     .ctor(ICaster&lt;string, T&gt; caster) { _inner = caster; }
+    ///     T Cast(byte[] obj) => _inner.Cast(Encoding.UTF8.GetString(obj));
+    /// }
+    /// </code>
     /// </summary>
     public static void EmitBytesParser(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
     {
@@ -873,12 +920,32 @@ public static class AuraRuntimeEmitter
         td.GenericParameters.Add(genT);
 
         // Implement ICaster<byte[], T>
-        var icasterRef = new GenericInstanceType(icasterTd) { GenericArguments = { byteArrayType, genT } };
-        td.Interfaces.Add(new InterfaceImplementation(icasterRef));
+        var icasterOutRef = new GenericInstanceType(icasterTd) { GenericArguments = { byteArrayType, genT } };
+        td.Interfaces.Add(new InterfaceImplementation(icasterOutRef));
 
-        EmitDefaultCtor(module, td);
+        // Field: private ICaster<string, T> _inner
+        var icasterInnerRef = new GenericInstanceType(icasterTd) { GenericArguments = { module.TypeSystem.String, genT } };
+        var innerField = new FieldDefinition("_inner", FieldAttributes.Private, icasterInnerRef);
+        td.Fields.Add(innerField);
 
-        // T Cast(byte[] obj)
+        // .ctor(ICaster<string, T> caster) { base(); _inner = caster; }
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        ctor.Parameters.Add(new ParameterDefinition("caster", ParameterAttributes.None, icasterInnerRef));
+        td.Methods.Add(ctor);
+        {
+            var il = ctor.Body.GetILProcessor();
+            var objCtor = module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, objCtor));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Stfld, innerField));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        // T Cast(byte[] obj) => _inner.Cast(Encoding.UTF8.GetString(obj))
         var cast = new MethodDefinition("Cast",
             MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
             genT);
@@ -886,41 +953,26 @@ public static class AuraRuntimeEmitter
         td.Methods.Add(cast);
         {
             var il = cast.Body.GetILProcessor();
-
-            // JsonSerializer.Deserialize(ReadOnlySpan<byte>, Type, options)
-            // Use: JsonSerializer.Deserialize(utf8Json, returnType, options)
-            var jsonSerializerType = typeof(System.Text.Json.JsonSerializer);
-            var getTypeFromHandle = module.ImportReference(typeof(Type).GetMethod("GetTypeFromHandle")!);
-
-            // We'll use the overload: Deserialize(ReadOnlySpan<byte>, Type, JsonSerializerOptions?)
-            // But Span is tricky in IL. Instead, use Deserialize(string, Type, options) after converting bytes to string.
-            // Simpler approach: Encoding.UTF8.GetString(bytes) then JsonSerializer.Deserialize(string, type, options)
-
             cast.Body.InitLocals = true;
-            cast.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String)); // loc0: json string
+            cast.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String)); // loc0: str
 
-            // string json = Encoding.UTF8.GetString(obj)
-            var encodingType = typeof(System.Text.Encoding);
-            var getUtf8 = module.ImportReference(encodingType.GetProperty("UTF8")!.GetGetMethod()!);
-            var getString = module.ImportReference(
-                typeof(System.Text.Encoding).GetMethod("GetString", new[] { typeof(byte[]) })!);
+            // string str = Encoding.UTF8.GetString(obj)
+            var getUtf8 = module.ImportReference(typeof(System.Text.Encoding).GetProperty("UTF8")!.GetGetMethod()!);
+            var getString = module.ImportReference(typeof(System.Text.Encoding).GetMethod("GetString", new[] { typeof(byte[]) })!);
 
             il.Append(il.Create(OpCodes.Call, getUtf8));     // Encoding.UTF8
             il.Append(il.Create(OpCodes.Ldarg_1));            // obj (byte[])
             il.Append(il.Create(OpCodes.Callvirt, getString)); // .GetString(byte[])
             il.Append(il.Create(OpCodes.Stloc_0));
 
-            // return (T)JsonSerializer.Deserialize(json, typeof(T), null)
-            var deserializeMethod = module.ImportReference(
-                jsonSerializerType.GetMethod("Deserialize",
-                    new[] { typeof(string), typeof(Type), typeof(System.Text.Json.JsonSerializerOptions) })!);
+            // return _inner.Cast(str)
+            var innerCastRef = new MethodReference("Cast", genT, icasterInnerRef) { HasThis = true };
+            innerCastRef.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, module.TypeSystem.String));
 
-            il.Append(il.Create(OpCodes.Ldloc_0));            // json
-            il.Append(il.Create(OpCodes.Ldtoken, genT));       // typeof(T)
-            il.Append(il.Create(OpCodes.Call, getTypeFromHandle));
-            il.Append(il.Create(OpCodes.Ldnull));              // options = null
-            il.Append(il.Create(OpCodes.Call, deserializeMethod));
-            il.Append(il.Create(OpCodes.Unbox_Any, genT));     // cast to T
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldfld, innerField));
+            il.Append(il.Create(OpCodes.Ldloc_0));
+            il.Append(il.Create(OpCodes.Callvirt, innerCastRef));
             il.Append(il.Create(OpCodes.Ret));
         }
 
