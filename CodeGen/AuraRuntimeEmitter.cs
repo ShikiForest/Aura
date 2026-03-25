@@ -980,6 +980,144 @@ public static class AuraRuntimeEmitter
         userTypes["BytesParser"] = td;
     }
 
+    // ── Caster Arg Builders ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits XmlCasterArgs : CLRConstructorArgBuilder (empty — no args needed).
+    /// </summary>
+    public static void EmitXmlCasterArgs(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("XmlCasterArgs")) return;
+        if (!userTypes.TryGetValue("CLRConstructorArgBuilder", out var baseTd)) return;
+        EmitEmptyArgBuilder(module, auraModule, userTypes, "XmlCasterArgs", baseTd);
+    }
+
+    /// <summary>
+    /// Emits XmlParserArgs : CLRConstructorArgBuilder (empty — no args needed).
+    /// </summary>
+    public static void EmitXmlParserArgs(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("XmlParserArgs")) return;
+        if (!userTypes.TryGetValue("CLRConstructorArgBuilder", out var baseTd)) return;
+        EmitEmptyArgBuilder(module, auraModule, userTypes, "XmlParserArgs", baseTd);
+    }
+
+    /// <summary>
+    /// Emits BytesCasterArgs&lt;T&gt; : CLRConstructorArgBuilder.
+    /// Has property Caster: ICaster&lt;T, string&gt;.
+    /// </summary>
+    public static void EmitBytesCasterArgs(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("BytesCasterArgs")) return;
+        if (!userTypes.TryGetValue("CLRConstructorArgBuilder", out var baseTd)) return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd)) return;
+
+        var td = new TypeDefinition("", "BytesCasterArgs`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            baseTd);
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Property: ICaster<T, string> Caster { get; set; }
+        var casterType = new GenericInstanceType(icasterTd) { GenericArguments = { genT, module.TypeSystem.String } };
+        EmitAutoProperty(module, td, "Caster", casterType);
+
+        // .ctor() calls base()
+        EmitCtorCallingBase(module, td, baseTd);
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["BytesCasterArgs"] = td;
+    }
+
+    /// <summary>
+    /// Emits BytesParserArgs&lt;T&gt; : CLRConstructorArgBuilder.
+    /// Has property Caster: ICaster&lt;string, T&gt;.
+    /// </summary>
+    public static void EmitBytesParserArgs(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("BytesParserArgs")) return;
+        if (!userTypes.TryGetValue("CLRConstructorArgBuilder", out var baseTd)) return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd)) return;
+
+        var td = new TypeDefinition("", "BytesParserArgs`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            baseTd);
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Property: ICaster<string, T> Caster { get; set; }
+        var casterType = new GenericInstanceType(icasterTd) { GenericArguments = { module.TypeSystem.String, genT } };
+        EmitAutoProperty(module, td, "Caster", casterType);
+
+        // .ctor() calls base()
+        EmitCtorCallingBase(module, td, baseTd);
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["BytesParserArgs"] = td;
+    }
+
+    // ── Caster Builders ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits XmlCasterBuilder&lt;T&gt; : IBuilder&lt;XmlCaster&lt;T&gt;&gt;.
+    /// Build() returns new XmlCaster&lt;T&gt;().
+    /// </summary>
+    public static void EmitXmlCasterBuilder(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("XmlCasterBuilder")) return;
+        if (!userTypes.TryGetValue("IBuilder", out var ibuilderTd)) return;
+        if (!userTypes.TryGetValue("XmlCaster", out var xmlCasterTd)) return;
+
+        EmitSimpleCasterBuilder(module, auraModule, userTypes, "XmlCasterBuilder", ibuilderTd, xmlCasterTd);
+    }
+
+    /// <summary>
+    /// Emits XmlParserBuilder&lt;T&gt; : IBuilder&lt;XmlParser&lt;T&gt;&gt;.
+    /// Build() returns new XmlParser&lt;T&gt;().
+    /// </summary>
+    public static void EmitXmlParserBuilder(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("XmlParserBuilder")) return;
+        if (!userTypes.TryGetValue("IBuilder", out var ibuilderTd)) return;
+        if (!userTypes.TryGetValue("XmlParser", out var xmlParserTd)) return;
+
+        EmitSimpleCasterBuilder(module, auraModule, userTypes, "XmlParserBuilder", ibuilderTd, xmlParserTd);
+    }
+
+    /// <summary>
+    /// Emits BytesCasterBuilder&lt;T&gt; : IBuilder&lt;BytesCaster&lt;T&gt;&gt;.
+    /// Build() extracts ICaster&lt;T,string&gt; from args and creates BytesCaster&lt;T&gt;(inner).
+    /// </summary>
+    public static void EmitBytesCasterBuilder(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("BytesCasterBuilder")) return;
+        if (!userTypes.TryGetValue("IBuilder", out var ibuilderTd)) return;
+        if (!userTypes.TryGetValue("BytesCaster", out var bytesCasterTd)) return;
+        if (!userTypes.TryGetValue("BytesCasterArgs", out var argsTd)) return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd)) return;
+
+        EmitAdapterCasterBuilder(module, auraModule, userTypes,
+            "BytesCasterBuilder", ibuilderTd, bytesCasterTd, argsTd, icasterTd,
+            innerTIn: null, innerTOut: module.TypeSystem.String, isStringFirst: false);
+    }
+
+    /// <summary>
+    /// Emits BytesParserBuilder&lt;T&gt; : IBuilder&lt;BytesParser&lt;T&gt;&gt;.
+    /// Build() extracts ICaster&lt;string,T&gt; from args and creates BytesParser&lt;T&gt;(inner).
+    /// </summary>
+    public static void EmitBytesParserBuilder(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("BytesParserBuilder")) return;
+        if (!userTypes.TryGetValue("IBuilder", out var ibuilderTd)) return;
+        if (!userTypes.TryGetValue("BytesParser", out var bytesParserTd)) return;
+        if (!userTypes.TryGetValue("BytesParserArgs", out var argsTd)) return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd)) return;
+
+        EmitAdapterCasterBuilder(module, auraModule, userTypes,
+            "BytesParserBuilder", ibuilderTd, bytesParserTd, argsTd, icasterTd,
+            innerTIn: module.TypeSystem.String, innerTOut: null, isStringFirst: true);
+    }
+
     // ── Shared helpers ──────────────────────────────────────────────────────
 
     private static void EmitDefaultCtor(ModuleDefinition module, TypeDefinition td)
@@ -993,5 +1131,259 @@ public static class AuraRuntimeEmitter
         il.Append(il.Create(OpCodes.Ldarg_0));
         il.Append(il.Create(OpCodes.Call, objCtor));
         il.Append(il.Create(OpCodes.Ret));
+    }
+
+    private static void EmitCtorCallingBase(ModuleDefinition module, TypeDefinition td, TypeDefinition baseTd)
+    {
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        td.Methods.Add(ctor);
+        var il = ctor.Body.GetILProcessor();
+        var baseCtor = baseTd.Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 0);
+        il.Append(il.Create(OpCodes.Ldarg_0));
+        if (baseCtor is not null)
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(baseCtor)));
+        else
+            il.Append(il.Create(OpCodes.Call, module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
+        il.Append(il.Create(OpCodes.Ret));
+    }
+
+    private static void EmitAutoProperty(ModuleDefinition module, TypeDefinition td, string name, TypeReference propType)
+    {
+        var backing = new FieldDefinition($"<{name}>k__BackingField", FieldAttributes.Private, propType);
+        td.Fields.Add(backing);
+
+        var getter = new MethodDefinition($"get_{name}",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName,
+            propType);
+        td.Methods.Add(getter);
+        {
+            var il = getter.Body.GetILProcessor();
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldfld, backing));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        var setter = new MethodDefinition($"set_{name}",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName,
+            module.TypeSystem.Void);
+        setter.Parameters.Add(new ParameterDefinition("value", ParameterAttributes.None, propType));
+        td.Methods.Add(setter);
+        {
+            var il = setter.Body.GetILProcessor();
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Stfld, backing));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        var prop = new PropertyDefinition(name, PropertyAttributes.None, propType)
+        {
+            GetMethod = getter,
+            SetMethod = setter
+        };
+        td.Properties.Add(prop);
+    }
+
+    private static void EmitEmptyArgBuilder(ModuleDefinition module, TypeDefinition auraModule,
+        Dictionary<string, TypeDefinition> userTypes, string name, TypeDefinition baseTd)
+    {
+        var td = new TypeDefinition("", name,
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            baseTd);
+        EmitCtorCallingBase(module, td, baseTd);
+        auraModule.NestedTypes.Add(td);
+        userTypes[name] = td;
+    }
+
+    /// <summary>
+    /// Emits a simple caster builder (no inner caster field) — e.g., XmlCasterBuilder, XmlParserBuilder.
+    /// Build() just calls Newobj on the target caster's default ctor.
+    /// </summary>
+    private static void EmitSimpleCasterBuilder(ModuleDefinition module, TypeDefinition auraModule,
+        Dictionary<string, TypeDefinition> userTypes, string name,
+        TypeDefinition ibuilderTd, TypeDefinition casterTd)
+    {
+        var td = new TypeDefinition("", $"{name}`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Target caster type: e.g., XmlCaster<T>
+        var casterInst = new GenericInstanceType(casterTd) { GenericArguments = { genT } };
+
+        // Implement IBuilder<CasterType<T>>
+        var ibuilderRef = new GenericInstanceType(ibuilderTd) { GenericArguments = { casterInst } };
+        td.Interfaces.Add(new InterfaceImplementation(ibuilderRef));
+
+        // Field: optional CLRConstructorArgBuilder _argBuilder
+        var argBuilderRef = userTypes.TryGetValue("CLRConstructorArgBuilder", out var argBuilderTd)
+            ? (TypeReference)argBuilderTd : module.TypeSystem.Object;
+
+        var argField = new FieldDefinition("_argBuilder", FieldAttributes.Private, argBuilderRef);
+        td.Fields.Add(argField);
+
+        // .ctor()
+        EmitDefaultCtor(module, td);
+
+        // .ctor(CLRConstructorArgBuilder argBuilder)
+        var ctor1 = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        ctor1.Parameters.Add(new ParameterDefinition("argBuilder", ParameterAttributes.None, argBuilderRef));
+        td.Methods.Add(ctor1);
+        {
+            var il = ctor1.Body.GetILProcessor();
+            var objCtor = module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, objCtor));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Stfld, argField));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        var dictType = module.ImportReference(typeof(Dictionary<string, object>));
+        var dictCtor = module.ImportReference(typeof(Dictionary<string, object>).GetConstructor(Type.EmptyTypes)!);
+
+        // GetConstructorDictionary()
+        var getDict = new MethodDefinition("GetConstructorDictionary",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            dictType);
+        td.Methods.Add(getDict);
+        {
+            var il = getDict.Body.GetILProcessor();
+            // return _argBuilder?.GetConstructorDictionary() ?? new()
+            il.Append(il.Create(OpCodes.Newobj, dictCtor));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        // Build(args) => new CasterType<T>()
+        var build = new MethodDefinition("Build",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            casterInst);
+        build.Parameters.Add(new ParameterDefinition("args", ParameterAttributes.None, dictType));
+        td.Methods.Add(build);
+        {
+            var il = build.Body.GetILProcessor();
+            // Find the default ctor of the caster type
+            var casterCtor = casterTd.Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 0);
+            if (casterCtor is not null)
+            {
+                // new CasterType<T>() — need to resolve the ctor on the generic instance
+                var ctorRef = new MethodReference(".ctor", module.TypeSystem.Void, casterInst)
+                {
+                    HasThis = true
+                };
+                il.Append(il.Create(OpCodes.Newobj, ctorRef));
+            }
+            else
+            {
+                il.Append(il.Create(OpCodes.Ldnull));
+            }
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes[name] = td;
+    }
+
+    /// <summary>
+    /// Emits an adapter caster builder — e.g., BytesCasterBuilder, BytesParserBuilder.
+    /// Build() extracts the inner ICaster from the typed args, then calls the adapter's 1-arg ctor.
+    /// </summary>
+    private static void EmitAdapterCasterBuilder(ModuleDefinition module, TypeDefinition auraModule,
+        Dictionary<string, TypeDefinition> userTypes, string name,
+        TypeDefinition ibuilderTd, TypeDefinition adapterTd, TypeDefinition argsTd,
+        TypeDefinition icasterTd,
+        TypeReference? innerTIn, TypeReference? innerTOut, bool isStringFirst)
+    {
+        var td = new TypeDefinition("", $"{name}`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Target adapter type: e.g., BytesCaster<T>
+        var adapterInst = new GenericInstanceType(adapterTd) { GenericArguments = { genT } };
+
+        // Implement IBuilder<AdapterType<T>>
+        var ibuilderRef = new GenericInstanceType(ibuilderTd) { GenericArguments = { adapterInst } };
+        td.Interfaces.Add(new InterfaceImplementation(ibuilderRef));
+
+        // Field: typed args builder
+        var argsInst = new GenericInstanceType(argsTd) { GenericArguments = { genT } };
+        var argsField = new FieldDefinition("_argBuilder", FieldAttributes.Private, argsInst);
+        td.Fields.Add(argsField);
+
+        // .ctor()
+        EmitDefaultCtor(module, td);
+
+        // .ctor(ArgType<T> argBuilder) — accepts the typed args
+        var ctor1 = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        ctor1.Parameters.Add(new ParameterDefinition("argBuilder", ParameterAttributes.None, argsInst));
+        td.Methods.Add(ctor1);
+        {
+            var il = ctor1.Body.GetILProcessor();
+            var objCtor = module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!);
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Call, objCtor));
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Stfld, argsField));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        var dictType = module.ImportReference(typeof(Dictionary<string, object>));
+        var dictCtor = module.ImportReference(typeof(Dictionary<string, object>).GetConstructor(Type.EmptyTypes)!);
+
+        // GetConstructorDictionary()
+        var getDict = new MethodDefinition("GetConstructorDictionary",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            dictType);
+        td.Methods.Add(getDict);
+        {
+            var il = getDict.Body.GetILProcessor();
+            il.Append(il.Create(OpCodes.Newobj, dictCtor));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        // Build(args) => new AdapterType<T>(_argBuilder.Caster)
+        var build = new MethodDefinition("Build",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            adapterInst);
+        build.Parameters.Add(new ParameterDefinition("args", ParameterAttributes.None, dictType));
+        td.Methods.Add(build);
+        {
+            var il = build.Body.GetILProcessor();
+
+            // Resolve inner ICaster type: ICaster<T, string> or ICaster<string, T>
+            TypeReference tIn = isStringFirst ? module.TypeSystem.String : (TypeReference)genT;
+            TypeReference tOut = isStringFirst ? (TypeReference)genT : module.TypeSystem.String;
+            var innerCasterType = new GenericInstanceType(icasterTd) { GenericArguments = { tIn, tOut } };
+
+            // Get the Caster property getter from the args type
+            var getCaster = new MethodReference($"get_Caster", innerCasterType, argsInst) { HasThis = true };
+
+            // Adapter ctor that takes ICaster
+            var adapterCtorRef = new MethodReference(".ctor", module.TypeSystem.Void, adapterInst) { HasThis = true };
+            adapterCtorRef.Parameters.Add(new ParameterDefinition("caster", ParameterAttributes.None, innerCasterType));
+
+            // return new AdapterType<T>(_argBuilder.get_Caster())
+            il.Append(il.Create(OpCodes.Ldarg_0));
+            il.Append(il.Create(OpCodes.Ldfld, argsField));
+            il.Append(il.Create(OpCodes.Callvirt, getCaster));
+            il.Append(il.Create(OpCodes.Newobj, adapterCtorRef));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes[name] = td;
     }
 }

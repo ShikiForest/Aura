@@ -89,6 +89,16 @@ public sealed class AuraCecilCodeGenerator
         AuraRuntimeEmitter.EmitXmlParser(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitBytesCaster(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitBytesParser(module, auraModule, userTypes);
+        // Caster arg builders
+        AuraRuntimeEmitter.EmitXmlCasterArgs(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitXmlParserArgs(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitBytesCasterArgs(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitBytesParserArgs(module, auraModule, userTypes);
+        // Caster builders
+        AuraRuntimeEmitter.EmitXmlCasterBuilder(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitXmlParserBuilder(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitBytesCasterBuilder(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitBytesParserBuilder(module, auraModule, userTypes);
 
         CreateTypeStubs(module, auraModule, ast, userTypes, astTypeNodes, windowNodes);
 
