@@ -637,4 +637,309 @@ public static class AuraRuntimeEmitter
         auraModule.NestedTypes.Add(td);
         userTypes["CasterExtensions"] = td;
     }
+
+    // ── XmlCaster<T> : ICaster<T, string> ───────────────────────────────────
+
+    /// <summary>
+    /// Emits XmlCaster&lt;T&gt; : ICaster&lt;T, string&gt;.
+    /// Cast(obj) serializes T to XML string via XmlSerializer.
+    /// </summary>
+    public static void EmitXmlCaster(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("XmlCaster"))
+            return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd))
+            return;
+
+        var td = new TypeDefinition("", "XmlCaster`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Implement ICaster<T, string>
+        var icasterRef = new GenericInstanceType(icasterTd) { GenericArguments = { genT, module.TypeSystem.String } };
+        td.Interfaces.Add(new InterfaceImplementation(icasterRef));
+
+        // .ctor()
+        EmitDefaultCtor(module, td);
+
+        // string Cast(T obj)
+        var cast = new MethodDefinition("Cast",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            module.TypeSystem.String);
+        cast.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, genT));
+        td.Methods.Add(cast);
+        {
+            var il = cast.Body.GetILProcessor();
+            cast.Body.InitLocals = true;
+
+            // var serializer = new XmlSerializer(typeof(T))
+            var xmlSerializerType = typeof(System.Xml.Serialization.XmlSerializer);
+            var xmlSerCtor = module.ImportReference(xmlSerializerType.GetConstructor(new[] { typeof(Type) })!);
+            var getTypeFromHandle = module.ImportReference(typeof(Type).GetMethod("GetTypeFromHandle")!);
+
+            cast.Body.Variables.Add(new VariableDefinition(module.ImportReference(xmlSerializerType)));  // loc0: serializer
+            cast.Body.Variables.Add(new VariableDefinition(module.ImportReference(typeof(System.IO.StringWriter)))); // loc1: sw
+            cast.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String)); // loc2: result
+
+            il.Append(il.Create(OpCodes.Ldtoken, genT));
+            il.Append(il.Create(OpCodes.Call, getTypeFromHandle));
+            il.Append(il.Create(OpCodes.Newobj, xmlSerCtor));
+            il.Append(il.Create(OpCodes.Stloc_0));
+
+            // var sw = new StringWriter()
+            var swCtor = module.ImportReference(typeof(System.IO.StringWriter).GetConstructor(Type.EmptyTypes)!);
+            il.Append(il.Create(OpCodes.Newobj, swCtor));
+            il.Append(il.Create(OpCodes.Stloc_1));
+
+            // serializer.Serialize(sw, obj)
+            var serializeMethod = module.ImportReference(
+                xmlSerializerType.GetMethod("Serialize", new[] { typeof(System.IO.TextWriter), typeof(object) })!);
+            il.Append(il.Create(OpCodes.Ldloc_0));
+            il.Append(il.Create(OpCodes.Ldloc_1));
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            if (genT.IsValueType)
+                il.Append(il.Create(OpCodes.Box, genT));
+            else
+                il.Append(il.Create(OpCodes.Box, genT)); // box for object param
+            il.Append(il.Create(OpCodes.Callvirt, serializeMethod));
+
+            // return sw.ToString()
+            var toStringMethod = module.ImportReference(typeof(object).GetMethod("ToString")!);
+            il.Append(il.Create(OpCodes.Ldloc_1));
+            il.Append(il.Create(OpCodes.Callvirt, toStringMethod));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["XmlCaster"] = td;
+    }
+
+    // ── XmlParser<T> : ICaster<string, T> ───────────────────────────────────
+
+    /// <summary>
+    /// Emits XmlParser&lt;T&gt; : ICaster&lt;string, T&gt;.
+    /// Cast(xml) deserializes XML string to T via XmlSerializer.
+    /// </summary>
+    public static void EmitXmlParser(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("XmlParser"))
+            return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd))
+            return;
+
+        var td = new TypeDefinition("", "XmlParser`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Implement ICaster<string, T>
+        var icasterRef = new GenericInstanceType(icasterTd) { GenericArguments = { module.TypeSystem.String, genT } };
+        td.Interfaces.Add(new InterfaceImplementation(icasterRef));
+
+        EmitDefaultCtor(module, td);
+
+        // T Cast(string obj)
+        var cast = new MethodDefinition("Cast",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            genT);
+        cast.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, module.TypeSystem.String));
+        td.Methods.Add(cast);
+        {
+            var il = cast.Body.GetILProcessor();
+            cast.Body.InitLocals = true;
+
+            var xmlSerializerType = typeof(System.Xml.Serialization.XmlSerializer);
+            var xmlSerCtor = module.ImportReference(xmlSerializerType.GetConstructor(new[] { typeof(Type) })!);
+            var getTypeFromHandle = module.ImportReference(typeof(Type).GetMethod("GetTypeFromHandle")!);
+
+            cast.Body.Variables.Add(new VariableDefinition(module.ImportReference(xmlSerializerType)));  // loc0
+            cast.Body.Variables.Add(new VariableDefinition(module.ImportReference(typeof(System.IO.StringReader)))); // loc1
+
+            // var serializer = new XmlSerializer(typeof(T))
+            il.Append(il.Create(OpCodes.Ldtoken, genT));
+            il.Append(il.Create(OpCodes.Call, getTypeFromHandle));
+            il.Append(il.Create(OpCodes.Newobj, xmlSerCtor));
+            il.Append(il.Create(OpCodes.Stloc_0));
+
+            // var sr = new StringReader(obj)
+            var srCtor = module.ImportReference(typeof(System.IO.StringReader).GetConstructor(new[] { typeof(string) })!);
+            il.Append(il.Create(OpCodes.Ldarg_1));
+            il.Append(il.Create(OpCodes.Newobj, srCtor));
+            il.Append(il.Create(OpCodes.Stloc_1));
+
+            // return (T)serializer.Deserialize(sr)
+            var deserializeMethod = module.ImportReference(
+                xmlSerializerType.GetMethod("Deserialize", new[] { typeof(System.IO.TextReader) })!);
+            il.Append(il.Create(OpCodes.Ldloc_0));
+            il.Append(il.Create(OpCodes.Ldloc_1));
+            il.Append(il.Create(OpCodes.Callvirt, deserializeMethod));
+            il.Append(il.Create(OpCodes.Unbox_Any, genT));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["XmlParser"] = td;
+    }
+
+    // ── BytesCaster<T> : ICaster<T, byte[]> ────────────────────────────────
+
+    /// <summary>
+    /// Emits BytesCaster&lt;T&gt; : ICaster&lt;T, byte[]&gt;.
+    /// Cast(obj) serializes T to UTF-8 JSON bytes via JsonSerializer.SerializeToUtf8Bytes.
+    /// </summary>
+    public static void EmitBytesCaster(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("BytesCaster"))
+            return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd))
+            return;
+
+        var byteArrayType = module.ImportReference(typeof(byte[]));
+
+        var td = new TypeDefinition("", "BytesCaster`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Implement ICaster<T, byte[]>
+        var icasterRef = new GenericInstanceType(icasterTd) { GenericArguments = { genT, byteArrayType } };
+        td.Interfaces.Add(new InterfaceImplementation(icasterRef));
+
+        EmitDefaultCtor(module, td);
+
+        // byte[] Cast(T obj)
+        var cast = new MethodDefinition("Cast",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            byteArrayType);
+        cast.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, genT));
+        td.Methods.Add(cast);
+        {
+            var il = cast.Body.GetILProcessor();
+
+            // return JsonSerializer.SerializeToUtf8Bytes(obj)
+            var jsonSerializerType = typeof(System.Text.Json.JsonSerializer);
+            var serializeMethod = module.ImportReference(
+                jsonSerializerType.GetMethod("SerializeToUtf8Bytes",
+                    new[] { typeof(object), typeof(Type), typeof(System.Text.Json.JsonSerializerOptions) })
+                ?? jsonSerializerType.GetMethod("SerializeToUtf8Bytes",
+                    new[] { typeof(object), typeof(System.Text.Json.JsonSerializerOptions) })!);
+
+            // Use the simple overload: SerializeToUtf8Bytes(object, Type)
+            var simpleSerialize = module.ImportReference(
+                jsonSerializerType.GetMethod("SerializeToUtf8Bytes",
+                    new[] { typeof(object), typeof(Type), typeof(System.Text.Json.JsonSerializerOptions) })!);
+            var getTypeFromHandle = module.ImportReference(typeof(Type).GetMethod("GetTypeFromHandle")!);
+
+            il.Append(il.Create(OpCodes.Ldarg_1));         // obj
+            il.Append(il.Create(OpCodes.Box, genT));        // box to object
+            il.Append(il.Create(OpCodes.Ldtoken, genT));    // typeof(T)
+            il.Append(il.Create(OpCodes.Call, getTypeFromHandle));
+            il.Append(il.Create(OpCodes.Ldnull));           // options = null
+            il.Append(il.Create(OpCodes.Call, simpleSerialize));
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["BytesCaster"] = td;
+    }
+
+    // ── BytesParser<T> : ICaster<byte[], T> ────────────────────────────────
+
+    /// <summary>
+    /// Emits BytesParser&lt;T&gt; : ICaster&lt;byte[], T&gt;.
+    /// Cast(bytes) deserializes UTF-8 JSON bytes to T via JsonSerializer.Deserialize.
+    /// </summary>
+    public static void EmitBytesParser(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("BytesParser"))
+            return;
+        if (!userTypes.TryGetValue("ICaster", out var icasterTd))
+            return;
+
+        var byteArrayType = module.ImportReference(typeof(byte[]));
+
+        var td = new TypeDefinition("", "BytesParser`1",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        var genT = new GenericParameter("T", td);
+        td.GenericParameters.Add(genT);
+
+        // Implement ICaster<byte[], T>
+        var icasterRef = new GenericInstanceType(icasterTd) { GenericArguments = { byteArrayType, genT } };
+        td.Interfaces.Add(new InterfaceImplementation(icasterRef));
+
+        EmitDefaultCtor(module, td);
+
+        // T Cast(byte[] obj)
+        var cast = new MethodDefinition("Cast",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.NewSlot | MethodAttributes.Virtual,
+            genT);
+        cast.Parameters.Add(new ParameterDefinition("obj", ParameterAttributes.None, byteArrayType));
+        td.Methods.Add(cast);
+        {
+            var il = cast.Body.GetILProcessor();
+
+            // JsonSerializer.Deserialize(ReadOnlySpan<byte>, Type, options)
+            // Use: JsonSerializer.Deserialize(utf8Json, returnType, options)
+            var jsonSerializerType = typeof(System.Text.Json.JsonSerializer);
+            var getTypeFromHandle = module.ImportReference(typeof(Type).GetMethod("GetTypeFromHandle")!);
+
+            // We'll use the overload: Deserialize(ReadOnlySpan<byte>, Type, JsonSerializerOptions?)
+            // But Span is tricky in IL. Instead, use Deserialize(string, Type, options) after converting bytes to string.
+            // Simpler approach: Encoding.UTF8.GetString(bytes) then JsonSerializer.Deserialize(string, type, options)
+
+            cast.Body.InitLocals = true;
+            cast.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String)); // loc0: json string
+
+            // string json = Encoding.UTF8.GetString(obj)
+            var encodingType = typeof(System.Text.Encoding);
+            var getUtf8 = module.ImportReference(encodingType.GetProperty("UTF8")!.GetGetMethod()!);
+            var getString = module.ImportReference(
+                typeof(System.Text.Encoding).GetMethod("GetString", new[] { typeof(byte[]) })!);
+
+            il.Append(il.Create(OpCodes.Call, getUtf8));     // Encoding.UTF8
+            il.Append(il.Create(OpCodes.Ldarg_1));            // obj (byte[])
+            il.Append(il.Create(OpCodes.Callvirt, getString)); // .GetString(byte[])
+            il.Append(il.Create(OpCodes.Stloc_0));
+
+            // return (T)JsonSerializer.Deserialize(json, typeof(T), null)
+            var deserializeMethod = module.ImportReference(
+                jsonSerializerType.GetMethod("Deserialize",
+                    new[] { typeof(string), typeof(Type), typeof(System.Text.Json.JsonSerializerOptions) })!);
+
+            il.Append(il.Create(OpCodes.Ldloc_0));            // json
+            il.Append(il.Create(OpCodes.Ldtoken, genT));       // typeof(T)
+            il.Append(il.Create(OpCodes.Call, getTypeFromHandle));
+            il.Append(il.Create(OpCodes.Ldnull));              // options = null
+            il.Append(il.Create(OpCodes.Call, deserializeMethod));
+            il.Append(il.Create(OpCodes.Unbox_Any, genT));     // cast to T
+            il.Append(il.Create(OpCodes.Ret));
+        }
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["BytesParser"] = td;
+    }
+
+    // ── Shared helpers ──────────────────────────────────────────────────────
+
+    private static void EmitDefaultCtor(ModuleDefinition module, TypeDefinition td)
+    {
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        td.Methods.Add(ctor);
+        var il = ctor.Body.GetILProcessor();
+        var objCtor = module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!);
+        il.Append(il.Create(OpCodes.Ldarg_0));
+        il.Append(il.Create(OpCodes.Call, objCtor));
+        il.Append(il.Create(OpCodes.Ret));
+    }
 }
