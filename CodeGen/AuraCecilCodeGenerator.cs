@@ -78,7 +78,8 @@ public sealed class AuraCecilCodeGenerator
         // v4: Emit AuraGlobal runtime type (handles, builder registration)
         AuraRuntimeEmitter.Emit(module, auraModule, userTypes);
 
-        // v5: Emit Aura builder types
+        // v5: Emit Aura base types and builder types
+        AuraRuntimeEmitter.EmitFuncArgsBase(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitIBuilder(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitVoidBuilder(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitCLRConstructorArgBuilder(module, auraModule, userTypes);

@@ -428,8 +428,7 @@ public sealed class SemanticAnalyzer
     }
 
     /// <summary>
-    /// Same as property whitelist but also allows Aura-defined class/struct types.
-    /// Function parameters and return values need to accept user-defined types for API design.
+    /// Same as property whitelist, plus Aura class/struct that inherit from FuncArgsBase.
     /// External CLR types still require the builder chain (not allowed directly).
     /// </summary>
     private bool IsAllowedPublicFunctionType(TypeRef t)
@@ -444,8 +443,10 @@ public sealed class SemanticAnalyzer
         {
             // Allow: trait/enum/window
             if (nt.ResolvedKind is TypeKind.Trait or TypeKind.Enum or TypeKind.Window) return true;
-            // Allow: Aura-defined class/struct (unlike property whitelist)
-            if (nt.ResolvedKind is TypeKind.Class or TypeKind.Struct) return true;
+
+            // Allow: Aura class/struct ONLY if it inherits from FuncArgsBase
+            if (nt.ResolvedKind is TypeKind.Class or TypeKind.Struct)
+                return InheritsFromFuncArgsBase(nt.FullName);
 
             if (nt.ResolvedKind == TypeKind.External)
             {
@@ -453,6 +454,40 @@ public sealed class SemanticAnalyzer
             }
 
             return false;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks whether a type (by full name) inherits from FuncArgsBase
+    /// by walking the BaseTypes chain in the symbol index.
+    /// </summary>
+    private bool InheritsFromFuncArgsBase(string fullName)
+    {
+        if (fullName == "FuncArgsBase") return true;
+
+        if (!_index.Types.TryGetValue(fullName, out var sym)) return false;
+
+        foreach (var bt in sym.BaseTypes)
+        {
+            var baseName = bt switch
+            {
+                NamedTypeNode ntn => ntn.Name.ToString(),
+                _ => null
+            };
+            if (baseName is null) continue;
+            if (baseName == "FuncArgsBase") return true;
+
+            // Recursive check for deeper inheritance
+            // Try to resolve full name via index
+            foreach (var candidate in _index.Types.Keys)
+            {
+                if (candidate == baseName || candidate.EndsWith("." + baseName))
+                {
+                    if (InheritsFromFuncArgsBase(candidate)) return true;
+                }
+            }
         }
 
         return false;

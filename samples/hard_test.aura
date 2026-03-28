@@ -11,7 +11,7 @@
 // ════════════════════════════════════════════════════════════
 
 // ── 整数ノード (連結リスト基本要素) ────────────────────────
-pub class IntNode {
+pub class IntNode : FuncArgsBase {
     pub property val: i32
     property next: IntNode
 
@@ -29,7 +29,7 @@ pub class IntNode {
 }
 
 // ── 整数連結リスト ─────────────────────────────────────────
-pub class IntList {
+pub class IntList : FuncArgsBase {
     property head: IntNode
     pub property size: i32
 
@@ -168,7 +168,7 @@ pub class IntQueue {
 }
 
 // ── Bool配列代替 (visited 管理用) ──────────────────────────
-pub class BoolEntry {
+pub class BoolEntry : FuncArgsBase {
     pub property key: i32
     pub property visited: bool
     property next: BoolEntry
@@ -326,7 +326,7 @@ fn merge_lists(a: IntList, b: IntList) -> IntList {
 // 3. グラフ (隣接リスト)
 // ════════════════════════════════════════════════════════════
 
-pub class EdgeNode {
+pub class EdgeNode : FuncArgsBase {
     pub property to: i32
     property next: EdgeNode
 
@@ -339,7 +339,7 @@ pub class EdgeNode {
     }
 }
 
-pub class AdjEntry {
+pub class AdjEntry : FuncArgsBase {
     pub property node_id: i32
     property edges: EdgeNode
     property next: AdjEntry

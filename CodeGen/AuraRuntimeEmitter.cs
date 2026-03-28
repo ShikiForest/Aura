@@ -193,6 +193,34 @@ public static class AuraRuntimeEmitter
         userTypes["IRoomReceiver"] = iface;
     }
 
+    // ── FuncArgsBase ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits the FuncArgsBase abstract class.
+    /// Types inheriting from this are allowed as pub function parameters/return values.
+    /// </summary>
+    public static void EmitFuncArgsBase(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("FuncArgsBase")) return;
+
+        var td = new TypeDefinition("", "FuncArgsBase",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.Abstract | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        // protected .ctor
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Family | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        var cil = ctor.Body.GetILProcessor();
+        cil.Append(cil.Create(OpCodes.Ldarg_0));
+        cil.Append(cil.Create(OpCodes.Call, module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
+        cil.Append(cil.Create(OpCodes.Ret));
+        td.Methods.Add(ctor);
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["FuncArgsBase"] = td;
+    }
+
     // ── IBuilder<T> interface ───────────────────────────────────────────────
 
     /// <summary>

@@ -18,7 +18,7 @@ pub enum Season {
 }
 
 // ── Struct (implemented as class) ────────────────────────────
-pub class Point {
+pub class Point : FuncArgsBase {
     pub property x: f64
     pub property y: f64
 

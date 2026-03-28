@@ -17,7 +17,7 @@ pub enum LogLevel {
 }
 
 // ── クラス定義 ───────────────────────────────────────────────
-pub class Vec2 {
+pub class Vec2 : FuncArgsBase {
     pub property x: f64
     pub property y: f64
 
