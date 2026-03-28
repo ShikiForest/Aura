@@ -180,6 +180,16 @@ public static class DiagnosticMessages
             "pub property の型がホワイトリストにありません: {0}.{1} : {2}",
             "pub property 类型不符合白名单：{0}.{1} : {2}");
 
+        Add("AUR4003",
+            "pub function parameter type not on whitelist: {0}.{1}(param {2}) : {3}",
+            "pub関数パラメータの型がホワイトリストにありません: {0}.{1}(パラメータ {2}) : {3}",
+            "pub 函数参数类型不符合白名单：{0}.{1}(参数 {2}) : {3}");
+
+        Add("AUR4004",
+            "pub function return type not on whitelist: {0}.{1} -> {2} (void is allowed)",
+            "pub関数の戻り値型がホワイトリストにありません: {0}.{1} -> {2}（voidは許可）",
+            "pub 函数返回类型不符合白名单：{0}.{1} -> {2}（void 允许）");
+
         Add("AUR4010",
             "Trait member not implemented: {0}.{1} (required signature: {2})",
             "トレイトメンバーが未実装です: {0}.{1}（必要なシグネチャ: {2}）",

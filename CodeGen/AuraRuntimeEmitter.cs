@@ -1386,4 +1386,230 @@ public static class AuraRuntimeEmitter
         auraModule.NestedTypes.Add(td);
         userTypes[name] = td;
     }
+
+    // ── Room ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits the Room class: a publish/subscribe message bus.
+    /// class Room {
+    ///     private List&lt;IRoomReceiver&gt; _members;
+    ///     void Join(IRoomReceiver receiver);
+    ///     void Leave(IRoomReceiver receiver);
+    ///     void Broadcast(string message, object args);
+    ///     int MemberCount { get; }
+    /// }
+    /// </summary>
+    public static void EmitRoom(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("Room")) return;
+
+        // Ensure IRoomReceiver exists
+        EmitIRoomReceiver(module, auraModule, userTypes);
+        var iRoomReceiver = userTypes["IRoomReceiver"];
+
+        var td = new TypeDefinition("", "Room",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        // _members field: List<object> (we use object because generic List<IRoomReceiver> is complex to emit)
+        var listType = module.ImportReference(typeof(System.Collections.Generic.List<object>));
+        var listCtor = module.ImportReference(typeof(System.Collections.Generic.List<object>).GetConstructor(Type.EmptyTypes)!);
+        var listAdd = module.ImportReference(typeof(System.Collections.Generic.List<object>).GetMethod("Add")!);
+        var listRemove = module.ImportReference(typeof(System.Collections.Generic.List<object>).GetMethod("Remove", new[] { typeof(object) })!);
+        var listContains = module.ImportReference(typeof(System.Collections.Generic.List<object>).GetMethod("Contains")!);
+        var listCount = module.ImportReference(typeof(System.Collections.Generic.List<object>).GetProperty("Count")!.GetGetMethod()!);
+
+        var membersField = new FieldDefinition("_members", FieldAttributes.Private, listType);
+        td.Fields.Add(membersField);
+
+        // .ctor: _members = new List<object>()
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        var cil = ctor.Body.GetILProcessor();
+        cil.Append(cil.Create(OpCodes.Ldarg_0));
+        cil.Append(cil.Create(OpCodes.Call, module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
+        cil.Append(cil.Create(OpCodes.Ldarg_0));
+        cil.Append(cil.Create(OpCodes.Newobj, listCtor));
+        cil.Append(cil.Create(OpCodes.Stfld, membersField));
+        cil.Append(cil.Create(OpCodes.Ret));
+        td.Methods.Add(ctor);
+
+        // void Join(IRoomReceiver receiver)
+        var join = new MethodDefinition("Join",
+            MethodAttributes.Public | MethodAttributes.HideBySig,
+            module.TypeSystem.Void);
+        join.Parameters.Add(new ParameterDefinition("receiver", ParameterAttributes.None, iRoomReceiver));
+        var jil = join.Body.GetILProcessor();
+        // if (!_members.Contains(receiver)) _members.Add(receiver)
+        var jEnd = jil.Create(OpCodes.Ret);
+        jil.Append(jil.Create(OpCodes.Ldarg_0));
+        jil.Append(jil.Create(OpCodes.Ldfld, membersField));
+        jil.Append(jil.Create(OpCodes.Ldarg_1));
+        jil.Append(jil.Create(OpCodes.Callvirt, listContains));
+        jil.Append(jil.Create(OpCodes.Brtrue, jEnd));
+        jil.Append(jil.Create(OpCodes.Ldarg_0));
+        jil.Append(jil.Create(OpCodes.Ldfld, membersField));
+        jil.Append(jil.Create(OpCodes.Ldarg_1));
+        jil.Append(jil.Create(OpCodes.Callvirt, listAdd));
+        jil.Append(jEnd);
+        td.Methods.Add(join);
+
+        // void Leave(IRoomReceiver receiver)
+        var leave = new MethodDefinition("Leave",
+            MethodAttributes.Public | MethodAttributes.HideBySig,
+            module.TypeSystem.Void);
+        leave.Parameters.Add(new ParameterDefinition("receiver", ParameterAttributes.None, iRoomReceiver));
+        var lil = leave.Body.GetILProcessor();
+        lil.Append(lil.Create(OpCodes.Ldarg_0));
+        lil.Append(lil.Create(OpCodes.Ldfld, membersField));
+        lil.Append(lil.Create(OpCodes.Ldarg_1));
+        lil.Append(lil.Create(OpCodes.Callvirt, listRemove));
+        lil.Append(lil.Create(OpCodes.Pop)); // Remove returns bool
+        lil.Append(lil.Create(OpCodes.Ret));
+        td.Methods.Add(leave);
+
+        // void Broadcast(string message, object args)
+        var broadcast = new MethodDefinition("Broadcast",
+            MethodAttributes.Public | MethodAttributes.HideBySig,
+            module.TypeSystem.Void);
+        broadcast.Parameters.Add(new ParameterDefinition("message", ParameterAttributes.None, module.TypeSystem.String));
+        broadcast.Parameters.Add(new ParameterDefinition("args", ParameterAttributes.None, module.TypeSystem.Object));
+        var bil = broadcast.Body.GetILProcessor();
+        // for (int i = 0; i < _members.Count; i++) ((IRoomReceiver)_members[i]).OnMessage(message, args)
+        var idxVar = new VariableDefinition(module.TypeSystem.Int32);
+        broadcast.Body.Variables.Add(idxVar);
+        var loopCheck = bil.Create(OpCodes.Nop);
+        var loopBody = bil.Create(OpCodes.Nop);
+        // i = 0
+        bil.Append(bil.Create(OpCodes.Ldc_I4_0));
+        bil.Append(bil.Create(OpCodes.Stloc, idxVar));
+        bil.Append(bil.Create(OpCodes.Br, loopCheck));
+        // body
+        bil.Append(loopBody);
+        bil.Append(bil.Create(OpCodes.Ldarg_0));
+        bil.Append(bil.Create(OpCodes.Ldfld, membersField));
+        bil.Append(bil.Create(OpCodes.Ldloc, idxVar));
+        var listGetItem = module.ImportReference(typeof(System.Collections.Generic.List<object>).GetProperty("Item")!.GetGetMethod()!);
+        bil.Append(bil.Create(OpCodes.Callvirt, listGetItem));
+        bil.Append(bil.Create(OpCodes.Castclass, iRoomReceiver));
+        bil.Append(bil.Create(OpCodes.Ldarg_1)); // message
+        bil.Append(bil.Create(OpCodes.Ldarg_2)); // args
+        var onMessage = iRoomReceiver.Methods.First(m => m.Name == "OnMessage");
+        bil.Append(bil.Create(OpCodes.Callvirt, onMessage));
+        // i++
+        bil.Append(bil.Create(OpCodes.Ldloc, idxVar));
+        bil.Append(bil.Create(OpCodes.Ldc_I4_1));
+        bil.Append(bil.Create(OpCodes.Add));
+        bil.Append(bil.Create(OpCodes.Stloc, idxVar));
+        // check: i < _members.Count
+        bil.Append(loopCheck);
+        bil.Append(bil.Create(OpCodes.Ldloc, idxVar));
+        bil.Append(bil.Create(OpCodes.Ldarg_0));
+        bil.Append(bil.Create(OpCodes.Ldfld, membersField));
+        bil.Append(bil.Create(OpCodes.Callvirt, listCount));
+        bil.Append(bil.Create(OpCodes.Blt, loopBody));
+        bil.Append(bil.Create(OpCodes.Ret));
+        td.Methods.Add(broadcast);
+
+        // int MemberCount { get; }
+        var getMemberCount = new MethodDefinition("get_MemberCount",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName,
+            module.TypeSystem.Int32);
+        var mcil = getMemberCount.Body.GetILProcessor();
+        mcil.Append(mcil.Create(OpCodes.Ldarg_0));
+        mcil.Append(mcil.Create(OpCodes.Ldfld, membersField));
+        mcil.Append(mcil.Create(OpCodes.Callvirt, listCount));
+        mcil.Append(mcil.Create(OpCodes.Ret));
+        td.Methods.Add(getMemberCount);
+
+        var memberCountProp = new PropertyDefinition("MemberCount", PropertyAttributes.None, module.TypeSystem.Int32)
+        {
+            GetMethod = getMemberCount
+        };
+        td.Properties.Add(memberCountProp);
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["Room"] = td;
+    }
+
+    // ── RoomArgs + RoomBuilder ──────────────────────────────────────────
+
+    /// <summary>
+    /// Emits RoomArgs (empty arg builder) and RoomBuilder for Room.
+    /// </summary>
+    public static void EmitRoomArgs(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("RoomArgs")) return;
+
+        // Ensure CLRConstructorArgBuilder exists
+        if (!userTypes.TryGetValue("CLRConstructorArgBuilder", out var argBuilderBase)) return;
+
+        var td = new TypeDefinition("", "RoomArgs",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            argBuilderBase);
+
+        // .ctor
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        var cil = ctor.Body.GetILProcessor();
+        cil.Append(cil.Create(OpCodes.Ldarg_0));
+        var baseCtor = argBuilderBase.Methods.First(m => m.IsConstructor && m.Parameters.Count == 0);
+        cil.Append(cil.Create(OpCodes.Call, baseCtor));
+        cil.Append(cil.Create(OpCodes.Ret));
+        td.Methods.Add(ctor);
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["RoomArgs"] = td;
+    }
+
+    public static void EmitRoomBuilder(ModuleDefinition module, TypeDefinition auraModule, Dictionary<string, TypeDefinition> userTypes)
+    {
+        if (userTypes.ContainsKey("RoomBuilder")) return;
+        if (!userTypes.TryGetValue("Room", out var roomTd)) return;
+        if (!userTypes.TryGetValue("IBuilder", out var ibuilder)) return;
+
+        var td = new TypeDefinition("", "RoomBuilder",
+            TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.BeforeFieldInit,
+            module.TypeSystem.Object);
+
+        // Implement IBuilder (non-generic version for simplicity — Build returns object)
+        td.Interfaces.Add(new InterfaceImplementation(ibuilder));
+
+        // .ctor
+        var ctor = new MethodDefinition(".ctor",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            module.TypeSystem.Void);
+        var cil = ctor.Body.GetILProcessor();
+        cil.Append(cil.Create(OpCodes.Ldarg_0));
+        cil.Append(cil.Create(OpCodes.Call, module.ImportReference(typeof(object).GetConstructor(Type.EmptyTypes)!)));
+        cil.Append(cil.Create(OpCodes.Ret));
+        td.Methods.Add(ctor);
+
+        // GetConstructorDictionary
+        var dictType = module.ImportReference(typeof(Dictionary<string, object>));
+        var dictCtor = module.ImportReference(typeof(Dictionary<string, object>).GetConstructor(Type.EmptyTypes)!);
+        var getDict = new MethodDefinition("GetConstructorDictionary",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot | MethodAttributes.Final,
+            dictType);
+        var gdil = getDict.Body.GetILProcessor();
+        gdil.Append(gdil.Create(OpCodes.Newobj, dictCtor));
+        gdil.Append(gdil.Create(OpCodes.Ret));
+        td.Methods.Add(getDict);
+
+        // Build(Dictionary<string,object> args) -> object { return new Room(); }
+        var build = new MethodDefinition("Build",
+            MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.NewSlot | MethodAttributes.Final,
+            module.TypeSystem.Object);
+        build.Parameters.Add(new ParameterDefinition("args", ParameterAttributes.None, dictType));
+        var bil = build.Body.GetILProcessor();
+        var roomCtor = roomTd.Methods.First(m => m.IsConstructor && m.Parameters.Count == 0);
+        bil.Append(bil.Create(OpCodes.Newobj, roomCtor));
+        bil.Append(bil.Create(OpCodes.Ret));
+        td.Methods.Add(build);
+
+        auraModule.NestedTypes.Add(td);
+        userTypes["RoomBuilder"] = td;
+    }
 }

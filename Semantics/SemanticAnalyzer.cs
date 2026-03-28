@@ -304,6 +304,36 @@ public sealed class SemanticAnalyzer
             }
         }
 
+        // AUR4003/4004：pub function parameter/return type whitelist
+        //   Same rules as property, but also allows Aura-defined class/struct (needed for API design).
+        //   void is always allowed for return types.
+        foreach (var fnList in sym.Functions.Values)
+        {
+            foreach (var fn in fnList)
+            {
+                if (fn.Visibility != Visibility.Public) continue;
+
+                // Check parameter types
+                foreach (var param in fn.Parameters)
+                {
+                    if (param.Type is null) continue;
+                    var pt = _typeResolver!.Resolve(param.Type, ctx);
+                    if (!IsAllowedPublicFunctionType(pt))
+                        Emit("AUR4003", DiagnosticSeverity.Error, param.Span,
+                            Msg.Diag("AUR4003", sym.FullName, fn.Name.Text, param.Name.Text, pt));
+                }
+
+                // Check return type (void is always allowed)
+                if (fn.ReturnSpec is ReturnTypeSpecNode rts)
+                {
+                    var rt = _typeResolver!.Resolve(rts.ReturnType, ctx);
+                    if (!rt.IsVoid && !IsAllowedPublicFunctionType(rt))
+                        Emit("AUR4004", DiagnosticSeverity.Error, rts.Span,
+                            Msg.Diag("AUR4004", sym.FullName, fn.Name.Text, rt));
+                }
+            }
+        }
+
         // AUR4020：struct 不能继承 class
         if (sym.Kind == TypeKind.Struct && sym.Decl is StructDeclNode sd)
         {
@@ -394,6 +424,37 @@ public sealed class SemanticAnalyzer
         }
 
         // unknown/null/error：默认不允许暴露（更符合防御性）
+        return false;
+    }
+
+    /// <summary>
+    /// Same as property whitelist but also allows Aura-defined class/struct types.
+    /// Function parameters and return values need to accept user-defined types for API design.
+    /// External CLR types still require the builder chain (not allowed directly).
+    /// </summary>
+    private bool IsAllowedPublicFunctionType(TypeRef t)
+    {
+        if (t is TypeRef.Nullable n) return IsAllowedPublicFunctionType(n.Inner);
+
+        if (t is TypeRef.Builtin) return true;
+        if (t is TypeRef.Function) return true;
+        if (t is TypeRef.WindowOf) return true;
+
+        if (t is TypeRef.Named nt)
+        {
+            // Allow: trait/enum/window
+            if (nt.ResolvedKind is TypeKind.Trait or TypeKind.Enum or TypeKind.Window) return true;
+            // Allow: Aura-defined class/struct (unlike property whitelist)
+            if (nt.ResolvedKind is TypeKind.Class or TypeKind.Struct) return true;
+
+            if (nt.ResolvedKind == TypeKind.External)
+            {
+                return IsExternalPrimitiveWhitelist(nt.FullName);
+            }
+
+            return false;
+        }
+
         return false;
     }
 

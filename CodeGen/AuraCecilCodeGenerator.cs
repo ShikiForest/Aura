@@ -99,6 +99,10 @@ public sealed class AuraCecilCodeGenerator
         AuraRuntimeEmitter.EmitXmlParserBuilder(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitBytesCasterBuilder(module, auraModule, userTypes);
         AuraRuntimeEmitter.EmitBytesParserBuilder(module, auraModule, userTypes);
+        // Room
+        AuraRuntimeEmitter.EmitRoom(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitRoomArgs(module, auraModule, userTypes);
+        AuraRuntimeEmitter.EmitRoomBuilder(module, auraModule, userTypes);
 
         CreateTypeStubs(module, auraModule, ast, userTypes, astTypeNodes, windowNodes);
 
