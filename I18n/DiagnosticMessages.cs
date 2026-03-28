@@ -679,6 +679,17 @@ public static class DiagnosticMessages
             "Async function '{0}' uses await patterns that cannot be lowered to non-blocking code. Restructure await expressions to use simple forms: 'let x = await expr;', 'await expr;', or 'return await expr;'.",
             "非同期関数 '{0}' のawaitパターンはノンブロッキングコードに変換できません。awaitを単純な形式に変更してください: 'let x = await expr;'、'await expr;'、または 'return await expr;'。",
             "异步函数 '{0}' 的 await 模式无法转换为非阻塞代码。请将 await 表达式改为简单形式：'let x = await expr;'、'await expr;' 或 'return await expr;'。");
+
+        // ── AURLW4xxx: MarshallCall lowering ────────────────────────────
+        Add("AURLW4001",
+            "MarshallCall: FuncArgsBase type '{0}' is missing property '{1}' required by function '{2}'.",
+            "MarshallCall: FuncArgsBase型 '{0}' に関数 '{2}' が要求するプロパティ '{1}' がありません。",
+            "MarshallCall：FuncArgsBase 类型 '{0}' 缺少函数 '{2}' 所需的属性 '{1}'。");
+
+        Add("AURLW4002",
+            "MarshallCall: property '{1}' in '{0}' has type '{2}' but function expects '{3}'.",
+            "MarshallCall: '{0}' のプロパティ '{1}' の型は '{2}' ですが、関数は '{3}' を期待しています。",
+            "MarshallCall：'{0}' 的属性 '{1}' 类型为 '{2}'，但函数期望 '{3}'。");
     }
 
     public static string Get(string code, AuraLocale locale, params object[] args)

@@ -24,14 +24,30 @@ public sealed class AuraLowerer
     // Track [BuildMe]-annotated class names for builder pattern enforcement
     private readonly HashSet<string> _buildMeTypes = new(StringComparer.Ordinal);
 
+    // MarshallCall support: function declarations indexed by name → parameter list
+    // Key: function name, Value: list of (paramName, paramTypeName) tuples
+    private readonly Dictionary<string, List<(string Name, string TypeName)>> _functionParams = new(StringComparer.Ordinal);
+
+    // MarshallCall support: FuncArgsBase-derived types → property name → property type name
+    private readonly Dictionary<string, Dictionary<string, string>> _funcArgsTypes = new(StringComparer.Ordinal);
+
+    // MarshallCall support: variable name → declared type name (for NameExprNode inference)
+    private readonly Dictionary<string, string> _varTypes = new(StringComparer.Ordinal);
+
     public LoweringResult<CompilationUnitNode> Lower(CompilationUnitNode ast)
     {
         _diags.Clear();
         _tempId = 0;
         _buildMeTypes.Clear();
+        _functionParams.Clear();
+        _funcArgsTypes.Clear();
+        _varTypes.Clear();
 
         // Pre-scan: collect [BuildMe]-annotated class names
         CollectBuildMeTypes(ast);
+
+        // Pre-scan: collect function declarations and FuncArgsBase types for MarshallCall
+        CollectMarshallCallInfo(ast);
 
         var lowered = LowerCompilationUnit(ast);
         return new LoweringResult<CompilationUnitNode>(lowered, _diags.ToArray());
@@ -63,6 +79,97 @@ public sealed class AuraLowerer
                     _buildMeTypes.Add(cd.Name.Text);
             }
         }
+    }
+
+    // ── MarshallCall pre-scan ────────────────────────────────────────────
+
+    private void CollectMarshallCallInfo(CompilationUnitNode ast)
+    {
+        foreach (var item in ast.Items)
+        {
+            switch (item)
+            {
+                case FunctionDeclNode fn:
+                    CollectFunctionParams(fn);
+                    break;
+                case ClassDeclNode cd:
+                    CollectTypeInfo(cd.Name.Text, cd.BaseTypes, cd.Members);
+                    break;
+                case StructDeclNode sd:
+                    CollectTypeInfo(sd.Name.Text, sd.BaseTypes, sd.Members);
+                    break;
+                case NamespaceDeclNode ns:
+                    CollectMarshallCallInfoInNamespace(ns);
+                    break;
+            }
+        }
+    }
+
+    private void CollectMarshallCallInfoInNamespace(NamespaceDeclNode ns)
+    {
+        foreach (var m in ns.Members)
+        {
+            switch (m)
+            {
+                case FunctionDeclNode fn:
+                    CollectFunctionParams(fn);
+                    break;
+                case ClassDeclNode cd:
+                    CollectTypeInfo(cd.Name.Text, cd.BaseTypes, cd.Members);
+                    break;
+                case StructDeclNode sd:
+                    CollectTypeInfo(sd.Name.Text, sd.BaseTypes, sd.Members);
+                    break;
+            }
+        }
+    }
+
+    private void CollectFunctionParams(FunctionDeclNode fn)
+    {
+        var paramList = new List<(string Name, string TypeName)>();
+        foreach (var p in fn.Parameters)
+        {
+            var typeName = p.Type switch
+            {
+                NamedTypeNode ntn => ntn.Name.ToString(),
+                BuiltinTypeNode btn => btn.Kind.ToString().ToLowerInvariant(),
+                _ => "unknown"
+            };
+            paramList.Add((p.Name.Text, typeName));
+        }
+        // Store by simple name (overwrite if duplicates, first wins)
+        _functionParams.TryAdd(fn.Name.Text, paramList);
+    }
+
+    private void CollectTypeInfo(string typeName, IReadOnlyList<TypeNode> baseTypes, IReadOnlyList<ITypeMember> members)
+    {
+        // Check if this type inherits from FuncArgsBase
+        bool isFuncArgs = baseTypes.Any(bt => bt is NamedTypeNode ntn && ntn.Name.ToString() == "FuncArgsBase");
+        if (!isFuncArgs) return;
+
+        var props = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var m in members)
+        {
+            if (m is PropertyDeclNode pd)
+            {
+                var propTypeName = pd.Type switch
+                {
+                    NamedTypeNode ntn => ntn.Name.ToString(),
+                    BuiltinTypeNode btn => btn.Kind.ToString().ToLowerInvariant(),
+                    _ => "unknown"
+                };
+                props[pd.Name.Text] = propTypeName;
+            }
+        }
+
+        // Also collect from function members (class methods — they might define properties via patterns)
+        foreach (var m in members)
+        {
+            if (m is FunctionDeclNode fn)
+                CollectFunctionParams(fn);
+        }
+
+        _funcArgsTypes[typeName] = props;
     }
 
     private CompilationUnitNode LowerCompilationUnit(CompilationUnitNode cu)
@@ -1342,7 +1449,7 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
         s switch
         {
             BlockStmtNode b => LowerBlock(b),
-            VarDeclStmtNode v => new VarDeclStmtNode(v.Span, v.Mutability, v.Name, v.Type, v.Init is null ? null : LowerExpr(v.Init)),
+            VarDeclStmtNode v => LowerVarDecl(v),
             ExprStmtNode e => new ExprStmtNode(e.Span, LowerExpr(e.Expr)),
             IfStmtNode i => new IfStmtNode(i.Span, LowerExpr(i.Condition), LowerBlock(i.Then), i.Else is null ? null : LowerStmt(i.Else)),
             WhileStmtNode w => new WhileStmtNode(w.Span, LowerExpr(w.Condition), LowerBlock(w.Body)),
@@ -1694,6 +1801,17 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
     /// obj.serialize() -> System.Text.Json.JsonSerializer.Serialize(obj)
     /// T.deserialize(data) -> System.Text.Json.JsonSerializer.Deserialize&lt;T&gt;(data)
     /// </summary>
+    private StmtNode LowerVarDecl(VarDeclStmtNode v)
+    {
+        // Track variable type for MarshallCall inference
+        if (v.Type is NamedTypeNode ntn)
+            _varTypes[v.Name.Text] = ntn.Name.ToString();
+        else if (v.Init is NewExprNode ne && ne.TypeRef is NamedTypeNode neType)
+            _varTypes[v.Name.Text] = neType.Name.ToString();
+
+        return new VarDeclStmtNode(v.Span, v.Mutability, v.Name, v.Type, v.Init is null ? null : LowerExpr(v.Init));
+    }
+
     private ExprNode LowerCallExpr(CallExprNode c)
     {
         // Check for .serialize() pattern: target.serialize()
@@ -1735,9 +1853,119 @@ private BlockStmtNode LowerBlock(BlockStmtNode block)
             }
         }
 
+        // MarshallCall: Func(argsObj) where argsObj is FuncArgsBase → Func(argsObj.param1, argsObj.param2, ...)
+        var marshalled = TryLowerMarshallCall(c);
+        if (marshalled is not null) return marshalled;
+
         // Default: lower normally
         return new CallExprNode(c.Span, LowerExpr(c.Callee), c.Args.Select(LowerArg).ToList());
     }
+
+    /// <summary>
+    /// Detects and lowers a MarshallCall pattern:
+    ///   Func(argsObj)  →  Func(argsObj.param1, argsObj.param2, ...)
+    /// where:
+    ///   - Func expects N parameters (N > 1)
+    ///   - argsObj is a single positional argument
+    ///   - argsObj's type is a FuncArgsBase subclass with matching property names and types
+    /// </summary>
+    private ExprNode? TryLowerMarshallCall(CallExprNode c)
+    {
+        // Must be a simple name call with exactly 1 positional arg
+        if (c.Args.Count != 1) return null;
+        if (c.Args[0] is not PositionalArgNode posArg) return null;
+        if (c.Callee is not NameExprNode calleeName) return null;
+
+        var funcName = calleeName.Name.Text;
+
+        // The function must exist and expect more than 1 parameter
+        if (!_functionParams.TryGetValue(funcName, out var expectedParams)) return null;
+        if (expectedParams.Count <= 1) return null;
+
+        // The single argument might be a FuncArgsBase type — we check via the arg expression
+        // For now, we detect by checking if the arg is a name that was typed as a FuncArgsBase subclass,
+        // or a NewExprNode creating a FuncArgsBase subclass, or any expression.
+        // We try to resolve the type name from the expression.
+        string? argsTypeName = InferArgTypeName(posArg.Value);
+        if (argsTypeName is null) return null;
+
+        // Check if this type is a known FuncArgsBase subclass
+        if (!_funcArgsTypes.TryGetValue(argsTypeName, out var argsProps)) return null;
+
+        // Validate all expected parameters have matching properties
+        foreach (var (paramName, paramType) in expectedParams)
+        {
+            if (!argsProps.TryGetValue(paramName, out var propType))
+            {
+                _diags.Add(new LoweringDiagnostic(c.Span, "AURLW4001", LoweringSeverity.Error,
+                    Msg.Diag("AURLW4001", argsTypeName, paramName, funcName)));
+                return null;
+            }
+
+            if (!TypeNameMatches(propType, paramType))
+            {
+                _diags.Add(new LoweringDiagnostic(c.Span, "AURLW4002", LoweringSeverity.Error,
+                    Msg.Diag("AURLW4002", argsTypeName, paramName, propType, paramType)));
+                return null;
+            }
+        }
+
+        // All matched! Lower to: Func(argsObj.param1, argsObj.param2, ...)
+        var loweredArg = LowerExpr(posArg.Value);
+        var newArgs = new List<ArgumentNode>(expectedParams.Count);
+        foreach (var (paramName, _) in expectedParams)
+        {
+            var memberAccess = new MemberAccessExprNode(c.Span,
+                loweredArg,
+                new NameNode(c.Span, paramName),
+                Array.Empty<TypeNode>());
+            newArgs.Add(new NamedArgNode(c.Span, new NameNode(c.Span, paramName), ":", memberAccess));
+        }
+
+        return new CallExprNode(c.Span, LowerExpr(c.Callee), newArgs);
+    }
+
+    /// <summary>
+    /// Tries to infer the type name of an expression for MarshallCall matching.
+    /// </summary>
+    private string? InferArgTypeName(ExprNode expr)
+    {
+        return expr switch
+        {
+            NewExprNode ne => ne.TypeRef is NamedTypeNode ntn ? ntn.Name.ToString() : null,
+            NameExprNode n => _varTypes.TryGetValue(n.Name.Text, out var t) ? t : null,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Checks if two type names match (case-insensitive for builtins).
+    /// </summary>
+    private static bool TypeNameMatches(string propType, string paramType)
+    {
+        if (string.Equals(propType, paramType, StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Normalize builtin type aliases
+        return NormalizeTypeName(propType) == NormalizeTypeName(paramType);
+    }
+
+    private static string NormalizeTypeName(string t) => t.ToLowerInvariant() switch
+    {
+        "i8" or "sbyte" or "system.sbyte" => "i8",
+        "i16" or "int16" or "system.int16" => "i16",
+        "i32" or "int" or "int32" or "system.int32" => "i32",
+        "i64" or "long" or "int64" or "system.int64" => "i64",
+        "u8" or "byte" or "system.byte" => "u8",
+        "u16" or "uint16" or "system.uint16" => "u16",
+        "u32" or "uint" or "uint32" or "system.uint32" => "u32",
+        "u64" or "ulong" or "uint64" or "system.uint64" => "u64",
+        "f32" or "float" or "single" or "system.single" => "f32",
+        "f64" or "double" or "system.double" => "f64",
+        "bool" or "boolean" or "system.boolean" => "bool",
+        "string" or "system.string" => "string",
+        "char" or "system.char" => "char",
+        var other => other
+    };
 
     // ------------------------------
     // v4: new T(builder) / [BuildMe] lowering
